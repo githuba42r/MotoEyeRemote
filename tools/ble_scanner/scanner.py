@@ -292,16 +292,59 @@ async def monitor_advertisements(address: str, cooldown: float = 0.5) -> None:
         await scanner.stop()
 
 
+async def reconnect_loop(
+    device: BLEDevice,
+    notify_uuids: list[str],
+    stop_event: threading.Event,
+) -> BleakClient | None:
+    """Attempt to reconnect with exponential backoff."""
+    delays = [1, 2, 4, 8, 16]
+    for attempt, delay in enumerate(delays, 1):
+        if stop_event.is_set():
+            return None
+        print(f"\n  Reconnection attempt {attempt}/{len(delays)} in {delay}s...")
+        await asyncio.sleep(delay)
+        try:
+            client = BleakClient(device, timeout=15.0)
+            await client.connect()
+            if client.is_connected:
+                print("  Reconnected!")
+                for uuid in notify_uuids:
+                    await client.start_notify(uuid, make_notification_handler(uuid))
+                    print(f"  Re-subscribed to {uuid}")
+                return client
+        except (BleakError, asyncio.TimeoutError) as e:
+            print(f"  Attempt {attempt} failed: {e}")
+
+    print("\n  5 reconnection attempts failed.")
+    print("  Press a button on the remote to trigger advertisement, then press Enter.")
+    return None
+
+
 async def subscribe_and_monitor(
-    client: BleakClient, notify_uuids: list[str]
+    client: BleakClient,
+    device: BLEDevice,
+    notify_uuids: list[str],
+    stop_event: threading.Event,
 ) -> None:
-    """Subscribe to all notify characteristics and keep connection alive."""
+    """Subscribe to notifications with reconnection support.
+
+    Note: Uses is_connected polling for disconnect detection
+    (bleak >= 0.21.0 removed set_disconnected_callback).
+    """
     for uuid in notify_uuids:
         await client.start_notify(uuid, make_notification_handler(uuid))
         print(f"  Subscribed to {uuid}")
 
-    # Keep alive — disconnection is handled by callback
-    while client.is_connected:
+    while not stop_event.is_set():
+        if not client.is_connected:
+            print("\n  *** Device disconnected ***")
+            new_client = await reconnect_loop(device, notify_uuids, stop_event)
+            if new_client:
+                client = new_client
+            else:
+                # Fall back to waiting for user
+                await asyncio.sleep(1.0)
         await asyncio.sleep(0.1)
 
 
@@ -489,7 +532,7 @@ async def main() -> None:
             )
         else:
             await asyncio.gather(
-                subscribe_and_monitor(client, notify_uuids),
+                subscribe_and_monitor(client, device, notify_uuids, stop_event),
                 event_processor(),
             )
     except asyncio.CancelledError:
