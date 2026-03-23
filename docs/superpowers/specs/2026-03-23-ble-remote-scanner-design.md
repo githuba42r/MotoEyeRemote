@@ -31,24 +31,46 @@ It is unknown whether long press is differentiated by the remote (distinct BLE v
 
 The tool scans for BLE devices using `bleak` and displays all discovered devices with name, MAC address, RSSI, and any manufacturer data or service UUIDs in the advertisement. The user selects the remote from the list.
 
-Once selected, the tool:
+Once selected, the tool proceeds through two phases:
 
-1. Logs the full advertisement data (raw manufacturer bytes, service UUIDs, local name) — required for the Android app to replicate the remote's identity
-2. Connects to the remote as a Central
-3. Handles pairing/bonding via BlueZ if required
-4. Discovers all GATT services and characteristics
-5. Prints a summary of the GATT profile (services, characteristics, descriptors, properties)
+**Phase 1 — Advertisement Monitoring:**
+
+Before attempting a connection, the tool passively monitors advertisements from the selected device for a configurable period (default 10 seconds) while the user presses buttons. This determines whether the remote communicates key data via changing advertisement payloads (some BLE remotes work this way without ever establishing a GATT connection). The tool logs:
+
+- Raw manufacturer data bytes per advertisement
+- Service UUIDs
+- Local name
+- RSSI
+- Whether the advertisement is connectable or non-connectable
+
+If advertisement payloads change with button presses, the tool enters advertisement-only monitoring mode (the remote communicates via advertisements, not GATT).
+
+If advertisements are non-connectable, the tool stays in advertisement monitoring mode and informs the user that GATT connection is not possible.
+
+**Phase 2 — GATT Connection (if advertisements are connectable and static):**
+
+1. Connects to the remote as a Central
+2. Handles pairing/bonding via BlueZ if required
+3. Discovers all GATT services and characteristics
+4. Prints a summary of the GATT profile (services, characteristics, descriptors, properties)
+
+Both the advertisement data and the GATT profile are critical for the Android app to replicate the remote's identity.
 
 ### 2. Key Press Monitoring & Cataloging
 
-After connection and GATT discovery, the tool subscribes to all characteristics that support notify or indicate.
+The monitoring mode depends on Phase 1 results:
+
+- **Advertisement mode:** The tool continuously scans for advertisements from the device and treats each unique advertisement payload as a key event.
+- **GATT mode:** The tool subscribes to all characteristics that support notify or indicate and receives key events as notifications.
 
 **Real-time monitoring loop:**
 
-- When a notification arrives: display timestamp, characteristic UUID, raw hex bytes
+- When an event arrives: display timestamp, source (advertisement or characteristic UUID), raw hex bytes, and time delta since the last event from the same source (to help identify long-press timing patterns)
 - Look up the raw value in the key map:
   - **Known:** print the description (e.g., `D-pad Up (short)`)
   - **Unknown:** prompt the user to enter a description, then save to the key map
+
+**Long press detection aid:** If the same raw value fires repeatedly or a distinct "key up" event follows a "key down" event, the tool displays the duration/timing to help the user determine whether long press is timing-based or value-based.
 
 **Key map structure (JSON):**
 
@@ -78,14 +100,28 @@ The key is the combination of characteristic UUID + raw hex value, since differe
 **Interactive commands while monitoring:**
 
 - Press a button on the remote -> see/catalog it
-- Type `list` -> show all cataloged keys
-- Type `edit <key>` -> change a description
-- Type `delete <key>` -> remove an entry
+- Type `list` -> show all cataloged keys with numeric IDs
+- Type `edit <id>` -> change a description by numeric ID
+- Type `delete <id>` -> remove an entry by numeric ID
+- Type `raw` -> toggle verbose hex dump mode for all incoming data
 - Type `quit` -> save and exit
 
 The key map JSON is saved on every change and loaded on startup for cross-session persistence.
 
-### 3. Project Structure
+### 3. Disconnect & Reconnection
+
+BLE connections are fragile. The tool registers a disconnect callback via `bleak`. On disconnect:
+
+1. Notify the user immediately
+2. Automatically attempt reconnection with exponential backoff (1s, 2s, 4s, up to 30s)
+3. On reconnection, re-subscribe to all notify/indicate characteristics
+4. After 5 failed attempts, prompt the user to press a button on the remote (to trigger advertisement) and retry
+
+### 4. I/O Coordination
+
+The interactive prompt (user input thread) and BLE event callbacks (async loop) share stdout. To avoid garbled output, incoming BLE events are queued and only displayed when the prompt is idle. When the user is being prompted for a key description, events are buffered and flushed after the prompt completes.
+
+### 5. Project Structure
 
 ```
 tools/
