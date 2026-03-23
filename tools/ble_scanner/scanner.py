@@ -305,6 +305,130 @@ async def subscribe_and_monitor(
         await asyncio.sleep(0.1)
 
 
+def process_events(keymap: KeyMap) -> None:
+    """Process all queued BLE events. Runs in the async event loop.
+
+    Displays known keys immediately. Unknown keys are queued for the
+    input thread to prompt the user (avoids blocking the async loop).
+    """
+    while not event_queue.empty():
+        try:
+            mode_tag, source, raw_bytes = event_queue.get_nowait()
+        except queue.Empty:
+            break
+
+        hex_val = raw_bytes.hex()
+        key = f"{source}:{hex_val}"
+
+        with keymap_lock:
+            line = format_event(source, raw_bytes, keymap)
+            if raw_mode:
+                line += f"  [raw: {' '.join(f'{b:02x}' for b in raw_bytes)}]"
+            print(line)
+            result = keymap.lookup(key)
+
+        if result is None:
+            unknown_queue.put((key, source, hex_val))
+
+
+def drain_unknown_keys(keymap: KeyMap) -> None:
+    """Prompt user for any unknown keys queued by the event processor."""
+    while not unknown_queue.empty():
+        try:
+            key, source, hex_val = unknown_queue.get_nowait()
+        except queue.Empty:
+            break
+        # Re-check — might have been cataloged by a previous iteration
+        with keymap_lock:
+            if keymap.lookup(key) is not None:
+                continue
+        desc = input(f"  Enter description for {key} (or Enter to skip): ").strip()
+        if desc:
+            with keymap_lock:
+                keymap.add(key, source=source, raw_hex=hex_val, description=desc)
+                keymap.save(KEYMAP_PATH)
+            print(f"  Saved: {key} => {desc}")
+
+
+def input_loop(keymap: KeyMap, stop_event: threading.Event) -> None:
+    """Handle interactive commands in a separate thread."""
+    print("\nCommands: list, edit <id>, delete <id>, raw, quit")
+    print("Press buttons on the remote to capture key events.\n")
+
+    while not stop_event.is_set():
+        # First, prompt for any unknown keys from BLE events
+        drain_unknown_keys(keymap)
+
+        try:
+            cmd = input("> ").strip().lower()
+        except EOFError:
+            stop_event.set()
+            break
+
+        if not cmd:
+            continue
+
+        if cmd == "quit":
+            stop_event.set()
+            break
+
+        if cmd == "list":
+            with keymap_lock:
+                items = keymap.list_keys()
+            if not items:
+                print("  No keys cataloged yet.")
+            else:
+                for num_id, key, entry in items:
+                    print(f"  [{num_id}] {key} => {entry['description']}")
+            continue
+
+        if cmd == "raw":
+            global raw_mode
+            raw_mode = not raw_mode
+            print(f"  Raw mode: {'ON' if raw_mode else 'OFF'}")
+            continue
+
+        if cmd.startswith("edit "):
+            try:
+                num_id = int(cmd.split()[1])
+                with keymap_lock:
+                    key = keymap.get_key_by_id(num_id)
+                    if key is None:
+                        print(f"  No key with ID {num_id}.")
+                        continue
+                    current = keymap.keys[key]["description"]
+                new_desc = input(f"  Current: '{current}'. New description: ").strip()
+                if new_desc:
+                    with keymap_lock:
+                        keymap.edit(key, new_desc)
+                        keymap.save(KEYMAP_PATH)
+                    print(f"  Updated: {key} => {new_desc}")
+            except (ValueError, IndexError):
+                print("  Usage: edit <id>")
+            continue
+
+        if cmd.startswith("delete "):
+            try:
+                num_id = int(cmd.split()[1])
+                with keymap_lock:
+                    key = keymap.get_key_by_id(num_id)
+                    if key is None:
+                        print(f"  No key with ID {num_id}.")
+                        continue
+                    desc = keymap.keys[key]["description"]
+                confirm = input(f"  Delete '{desc}' ({key})? [y/N]: ").strip().lower()
+                if confirm in ("y", "yes"):
+                    with keymap_lock:
+                        keymap.delete(key)
+                        keymap.save(KEYMAP_PATH)
+                    print(f"  Deleted: {key}")
+            except (ValueError, IndexError):
+                print("  Usage: delete <id>")
+            continue
+
+        print(f"  Unknown command: {cmd}")
+
+
 async def main() -> None:
     args = parse_args()
     print("MotoEye E6 BLE Remote Scanner")
@@ -336,11 +460,45 @@ async def main() -> None:
     # Phase 2 (if GATT mode)
     client: BleakClient | None = None
     notify_uuids: list[str] = []
-
     if mode == "gatt":
         client = await phase2_gatt_connect(device)
         notify_uuids = get_notify_characteristics(client)
         print(f"\nNotify/indicate characteristics: {notify_uuids}")
+
+    # Start monitoring
+    stop_event = threading.Event()
+
+    # Event processing timer
+    async def event_processor():
+        while not stop_event.is_set():
+            process_events(keymap)
+            await asyncio.sleep(0.1)
+
+    # Start input thread
+    input_thread = threading.Thread(
+        target=input_loop, args=(keymap, stop_event), daemon=True
+    )
+    input_thread.start()
+
+    # Start BLE monitoring + event processing
+    try:
+        if mode == "adv":
+            await asyncio.gather(
+                monitor_advertisements(device.address),
+                event_processor(),
+            )
+        else:
+            await asyncio.gather(
+                subscribe_and_monitor(client, notify_uuids),
+                event_processor(),
+            )
+    except asyncio.CancelledError:
+        pass
+    finally:
+        if client and client.is_connected:
+            await client.disconnect()
+        keymap.save(KEYMAP_PATH)
+        print("\nKey map saved. Goodbye.")
 
 
 if __name__ == "__main__":
