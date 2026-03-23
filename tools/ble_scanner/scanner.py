@@ -222,6 +222,89 @@ def get_notify_characteristics(client: BleakClient) -> list[str]:
     return uuids
 
 
+# Shared state (imports already present from Task 1)
+event_queue: queue.Queue[tuple[str, str, bytes]] = queue.Queue()
+unknown_queue: queue.Queue[tuple[str, str, str]] = queue.Queue()  # (key, source, hex_val)
+last_event_time: dict[str, float] = {}
+keymap_lock = threading.Lock()
+raw_mode = False
+
+
+def format_event(
+    source: str, raw_bytes: bytes, keymap: KeyMap
+) -> str:
+    """Format a BLE event for display."""
+    now = time.time()
+    hex_val = raw_bytes.hex()
+    key = f"{source}:{hex_val}"
+
+    delta_str = ""
+    if source in last_event_time:
+        delta = now - last_event_time[source]
+        delta_str = f" (+{delta:.3f}s)"
+    last_event_time[source] = now
+
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    result = keymap.lookup(key)
+
+    if result:
+        return (
+            f"[{timestamp}]{delta_str} {source} -> {hex_val}"
+            f"  => {result['description']}"
+        )
+    else:
+        return f"[{timestamp}]{delta_str} {source} -> {hex_val}  => *** UNKNOWN ***"
+
+
+def make_notification_handler(char_uuid: str):
+    """Create a notification callback for a specific characteristic."""
+    def handler(sender, data: bytearray) -> None:
+        event_queue.put(("gatt", char_uuid, bytes(data)))
+    return handler
+
+
+async def monitor_advertisements(address: str, cooldown: float = 0.5) -> None:
+    """Continuously scan for advertisements and queue events.
+
+    Uses timestamp-based deduplication: the same payload is suppressed
+    for `cooldown` seconds after first seen, then accepted again.
+    """
+    last_seen: dict[str, float] = {}  # payload_sig -> timestamp
+
+    def callback(device: BLEDevice, adv: AdvertisementData) -> None:
+        if device.address != address:
+            return
+        if adv.manufacturer_data:
+            now = time.time()
+            for _k, v in adv.manufacturer_data.items():
+                sig = v.hex()
+                if sig in last_seen and (now - last_seen[sig]) < cooldown:
+                    continue
+                last_seen[sig] = now
+                event_queue.put(("adv", "adv", bytes(v)))
+
+    scanner = BleakScanner(detection_callback=callback)
+    await scanner.start()
+    try:
+        while True:
+            await asyncio.sleep(0.1)
+    finally:
+        await scanner.stop()
+
+
+async def subscribe_and_monitor(
+    client: BleakClient, notify_uuids: list[str]
+) -> None:
+    """Subscribe to all notify characteristics and keep connection alive."""
+    for uuid in notify_uuids:
+        await client.start_notify(uuid, make_notification_handler(uuid))
+        print(f"  Subscribed to {uuid}")
+
+    # Keep alive — disconnection is handled by callback
+    while client.is_connected:
+        await asyncio.sleep(0.1)
+
+
 async def main() -> None:
     args = parse_args()
     print("MotoEye E6 BLE Remote Scanner")
