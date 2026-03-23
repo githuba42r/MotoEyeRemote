@@ -43,11 +43,15 @@ Before attempting a connection, the tool passively monitors advertisements from 
 - RSSI
 - Whether the advertisement is connectable or non-connectable
 
-If advertisement payloads change with button presses, the tool enters advertisement-only monitoring mode (the remote communicates via advertisements, not GATT).
+At the end of Phase 1, the tool displays a summary:
+
+> Phase 1 complete. Observed N distinct advertisement payloads. Advertisements are [connectable/non-connectable]. Recommendation: [advertisement mode / GATT connection].
+
+If more than one distinct manufacturer data payload was observed, the tool reports the distinct payloads and asks the user whether the changes corresponded to button presses. The user confirms to enter advertisement-only mode or overrides to proceed to GATT connection.
 
 If advertisements are non-connectable, the tool stays in advertisement monitoring mode and informs the user that GATT connection is not possible.
 
-**Phase 2 — GATT Connection (if advertisements are connectable and static):**
+**Phase 2 — GATT Connection (if advertisements are connectable and user confirms):**
 
 1. Connects to the remote as a Central
 2. Handles pairing/bonding via BlueZ if required
@@ -85,9 +89,9 @@ The monitoring mode depends on Phase 1 results:
     }
   },
   "keys": {
-    "<char_uuid>:<hex_value>": {
+    "<source>:<hex_value>": {
       "description": "D-pad Up (short)",
-      "characteristic": "0000ffe1-...",
+      "source": "0000ffe1-...",
       "raw_hex": "01a3",
       "first_seen": "2026-03-23T12:00:00"
     }
@@ -95,7 +99,7 @@ The monitoring mode depends on Phase 1 results:
 }
 ```
 
-The key is the combination of characteristic UUID + raw hex value, since different characteristics could send identical byte values with different meanings.
+The key is the combination of source + raw hex value. The source is either a GATT characteristic UUID (e.g., `0000ffe1-0000-1000-8000-00805f9b34fb:01a3`) or the literal prefix `adv` for advertisement-sourced events (e.g., `adv:01a3ff02`). This distinction ensures the key map works in both advertisement and GATT modes.
 
 **Interactive commands while monitoring:**
 
@@ -142,8 +146,11 @@ tools/
 ```bash
 cd tools/ble_scanner
 pip install -r requirements.txt
-python scanner.py
+python scanner.py                          # interactive device selection
+python scanner.py --address AA:BB:CC:DD:EE:FF  # skip discovery, connect directly
 ```
+
+**Note:** On Linux, BLE scanning requires either root privileges or the `cap_net_raw,cap_net_admin` capabilities on the Python binary. Run with `sudo` or set capabilities via `sudo setcap 'cap_net_raw,cap_net_admin+eip' $(which python3)`.
 
 The tool uses `asyncio` since `bleak` is async-native. The interactive prompt runs in a separate thread to avoid blocking the BLE event loop.
 
