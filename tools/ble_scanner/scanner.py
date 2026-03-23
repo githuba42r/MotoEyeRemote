@@ -193,6 +193,35 @@ def phase1_decision(payloads: list[dict], is_connectable: bool) -> str:
         return "gatt"
 
 
+async def phase2_gatt_connect(device: BLEDevice) -> BleakClient:
+    """Connect to device and print GATT service/characteristic summary."""
+    print(f"\n--- Phase 2: Connecting via GATT ---")
+    client = BleakClient(device, timeout=15.0)
+    await client.connect()
+    print(f"Connected: {client.is_connected}")
+
+    print("\nGATT Services:")
+    for service in client.services:
+        print(f"\n  Service: {service.uuid} ({service.description})")
+        for char in service.characteristics:
+            props = ", ".join(char.properties)
+            print(f"    Char: {char.uuid} [{props}] ({char.description})")
+            for desc in char.descriptors:
+                print(f"      Desc: {desc.uuid} ({desc.description})")
+
+    return client
+
+
+def get_notify_characteristics(client: BleakClient) -> list[str]:
+    """Return UUIDs of all characteristics that support notify or indicate."""
+    uuids = []
+    for service in client.services:
+        for char in service.characteristics:
+            if "notify" in char.properties or "indicate" in char.properties:
+                uuids.append(char.uuid)
+    return uuids
+
+
 async def main() -> None:
     args = parse_args()
     print("MotoEye E6 BLE Remote Scanner")
@@ -220,6 +249,15 @@ async def main() -> None:
         service_uuids,
     )
     keymap.save(KEYMAP_PATH)
+
+    # Phase 2 (if GATT mode)
+    client: BleakClient | None = None
+    notify_uuids: list[str] = []
+
+    if mode == "gatt":
+        client = await phase2_gatt_connect(device)
+        notify_uuids = get_notify_characteristics(client)
+        print(f"\nNotify/indicate characteristics: {notify_uuids}")
 
 
 if __name__ == "__main__":
