@@ -117,6 +117,82 @@ async def select_device(
             sys.exit(0)
 
 
+async def phase1_monitor_advertisements(
+    address: str, duration: float
+) -> tuple[list[dict], bool]:
+    """Monitor advertisements from a specific device.
+
+    Returns (distinct_payloads, is_connectable).
+    """
+    print(f"\n--- Phase 1: Monitoring advertisements for {duration}s ---")
+    print("Press buttons on the remote during this period.\n")
+
+    payloads: list[dict] = []
+    seen_payloads: set[str] = set()
+    is_connectable: bool | None = None
+
+    def callback(device: BLEDevice, adv: AdvertisementData) -> None:
+        nonlocal is_connectable
+        if device.address != address:
+            return
+
+        mfr_hex = {
+            f"0x{k:04x}": v.hex() for k, v in adv.manufacturer_data.items()
+        } if adv.manufacturer_data else {}
+
+        payload_sig = json.dumps(mfr_hex, sort_keys=True)
+
+        if is_connectable is None:
+            is_connectable = adv.connectable
+
+        if payload_sig not in seen_payloads:
+            seen_payloads.add(payload_sig)
+            entry = {
+                "manufacturer_data": mfr_hex,
+                "service_uuids": adv.service_uuids,
+                "local_name": adv.local_name,
+                "rssi": adv.rssi,
+                "connectable": adv.connectable,
+            }
+            payloads.append(entry)
+            print(
+                f"  [{len(payloads)}] mfr={mfr_hex} uuids={adv.service_uuids} "
+                f"rssi={adv.rssi} connectable={adv.connectable}"
+            )
+
+    scanner = BleakScanner(detection_callback=callback)
+    await scanner.start()
+    await asyncio.sleep(duration)
+    await scanner.stop()
+
+    conn = is_connectable if is_connectable is not None else False
+    print(f"\nPhase 1 complete. Observed {len(payloads)} distinct advertisement payload(s).")
+    print(f"Advertisements are {'connectable' if conn else 'non-connectable'}.")
+
+    return payloads, conn
+
+
+def phase1_decision(payloads: list[dict], is_connectable: bool) -> str:
+    """Determine monitoring mode based on Phase 1 results. Returns 'adv' or 'gatt'."""
+    if not is_connectable:
+        print("Device is non-connectable. Using advertisement monitoring mode.")
+        return "adv"
+
+    if len(payloads) > 1:
+        print(f"\nObserved {len(payloads)} distinct payloads during button presses.")
+        print("Recommendation: advertisement mode (payloads change with actions).")
+        while True:
+            choice = input("Use advertisement mode? [Y/n]: ").strip().lower()
+            if choice in ("", "y", "yes"):
+                return "adv"
+            if choice in ("n", "no"):
+                return "gatt"
+            print("Enter y or n.")
+    else:
+        print("Recommendation: GATT connection (static advertisements).")
+        return "gatt"
+
+
 async def main() -> None:
     args = parse_args()
     print("MotoEye E6 BLE Remote Scanner")
@@ -124,6 +200,26 @@ async def main() -> None:
     keymap = KeyMap.load(KEYMAP_PATH)
     device, adv_data = await select_device(args)
     print(f"\nSelected: {device.name or '(unknown)'} [{device.address}]")
+
+    # Phase 1
+    payloads, is_connectable = await phase1_monitor_advertisements(
+        device.address, args.scan_time
+    )
+    mode = phase1_decision(payloads, is_connectable)
+    print(f"\nMonitoring mode: {mode.upper()}")
+
+    # Store device info in keymap
+    mfr_data = {}
+    if payloads:
+        mfr_data = payloads[0].get("manufacturer_data", {})
+    service_uuids = payloads[0].get("service_uuids", []) if payloads else []
+    keymap.set_device(
+        device.name or "(unknown)",
+        device.address,
+        mfr_data,
+        service_uuids,
+    )
+    keymap.save(KEYMAP_PATH)
 
 
 if __name__ == "__main__":
