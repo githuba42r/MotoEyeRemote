@@ -4,5 +4,8 @@
         <item name="android:windowBackground">#FF000000</item>
         <item name="android:statusBarColor">#FF000000</item>
         <item name="android:navigationBarColor">#FF000000</item>
+        <!-- Keep app content below the system status/notification bar -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:fitsSystemWindows">true</item>
     </style>
 </resources>

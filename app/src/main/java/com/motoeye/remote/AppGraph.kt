@@ -47,6 +47,8 @@ object AppGraph {
         private set
     lateinit var phoneHid: com.motoeye.remote.hid.PhoneHidDevice
         private set
+    lateinit var tpmsBle: com.motoeye.remote.tpms.TpmsBleMonitor
+        private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -62,6 +64,10 @@ object AppGraph {
             macroDb = MacroDatabase.get(appContext)
             macroEngine = MacroEngine(appContext)
             phoneHid = com.motoeye.remote.hid.PhoneHidDevice(appContext)
+            tpmsBle = com.motoeye.remote.tpms.TpmsBleMonitor(appContext)
+
+            // Direct BLE TPMS sensor reading (sensors advertise independently)
+            tpmsBle.start()
 
             // Start the HID-keyboard profile early; it needs the system to
             // register the app before the HUD connection can be established
@@ -189,6 +195,24 @@ object AppGraph {
                         appContext, "D5:DE:A3:74:B1:66"
                     )
                     android.util.Log.i("HidRemoteProbe", "PROBE RESULT: $result")
+                }
+            }
+            cmd.startsWith("svcprobe") -> {
+                // Full GATT service dump of a bonded peer (default: the HUD)
+                val addr = cmd.removePrefix("svcprobe:").trim()
+                    .ifEmpty { "98:26:AD:C3:C7:13" }
+                appScope.launch {
+                    val result = com.motoeye.remote.hid.SvcDumpProbe.dump(appContext, addr)
+                    android.util.Log.i("SvcDumpProbe", "SVC DUMP $addr:\n$result")
+                }
+            }
+            cmd.startsWith("adsprobe") -> {
+                // Passive BLE advertisement capture (TPMS sensor hunting).
+                // Optional rssi floor: adsprobe:-80
+                val floor = cmd.removePrefix("adsprobe:").trim().toIntOrNull() ?: -99
+                appScope.launch {
+                    val n = com.motoeye.remote.hid.RawAdvProbe.probe(appContext, floor)
+                    android.util.Log.i("RawAdvProbe", "adsprobe complete: $n devices")
                 }
             }
         }

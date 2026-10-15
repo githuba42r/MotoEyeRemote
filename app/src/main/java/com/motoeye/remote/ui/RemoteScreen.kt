@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Camera
@@ -146,90 +146,101 @@ fun RemoteScreen(
             onDevice = onOpenDeviceSelect
         )
 
-        // Main control area — layout adapts to orientation
-        val orientation = LocalConfiguration.current.orientation
-        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LeftButtonColumn(
-                    onHaptic = pressHaptic,
-                    buttonSize = 60.dp,
-                    spacing = 16.dp,
-                    showRecord = showRecordButton && !recordAtTop,
+        // Main control area — corner shortcuts + centered D-pad + BACK
+        // below it + volume keys in the bottom corners. Works in both
+        // orientations (sizes scale for landscape).
+        val isLandscape = LocalConfiguration.current.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = 8.dp)
+        ) {
+            val cornerSize = (if (isLandscape) 86.dp else 104.dp)
+            val volSize = (if (isLandscape) 70.dp else 92.dp)
+            val dpadSize = (if (isLandscape) 195.dp else 250.dp)
+            val backSize = (if (isLandscape) 56.dp else 72.dp)
+
+            // CAM top-left (square, rounded, big)
+            TapButton(
+                label = "CAM",
+                icon = Icons.Default.Camera,
+                color = CameraBlue,
+                onClick = {
+                    pressHaptic(true)
+                    AppGraph.sendCameraTrigger()
+                },
+                size = cornerSize,
+                enabled = hidReady,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                modifier = Modifier.align(Alignment.TopStart)
+            )
+
+            // REC top-right (square, rounded, big); when record is hidden,
+            // BACK takes the top-right corner at the same size instead
+            if (showRecordButton && !recordAtTop) {
+                RecordButton(
                     isRecording = isRecording,
-                    onToggleRecord = toggleRecord,
-                    hidReady = hidReady
-                )
-                Dpad(onHaptic = pressHaptic)
-                RightButtonColumn(
+                    onToggle = toggleRecord,
                     onHaptic = pressHaptic,
-                    buttonSize = 60.dp,
-                    spacing = 16.dp
+                    label = if (isRecording) "STOP" else "REC",
+                    size = cornerSize,
+                    enabled = hidReady,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
+            } else {
+                HoldButton(
+                    label = "BACK",
+                    icon = Icons.AutoMirrored.Filled.Undo,
+                    color = ButtonBg,
+                    onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x29, Protocol.Keys.BACK, it) },
+                    size = cornerSize,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                    modifier = Modifier.align(Alignment.TopEnd)
                 )
             }
-        } else {
-            // Portrait: D-pad on top, buttons in two rows below
+
+            // Center column: D-pad, and BACK beneath it only when record
+            // hasn't already taken the top-right corner slot
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Dpad(onHaptic = pressHaptic)
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TapButton(
-                        label = "CAM",
-                        icon = Icons.Default.Camera,
-                        color = CameraBlue,
-                        onClick = {
-                            pressHaptic(true)
-                            AppGraph.sendCameraTrigger()
-                        },
-                        enabled = hidReady
-                    )
-                    if (showRecordButton && !recordAtTop) {
-                        RecordButton(
-                            isRecording = isRecording,
-                            onToggle = toggleRecord,
-                            onHaptic = pressHaptic,
-                            label = if (isRecording) "STOP" else "REC",
-                            enabled = hidReady
-                        )
-                    }
-                }
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Dpad(onHaptic = pressHaptic, sizeDp = dpadSize)
+                if (showRecordButton && !recordAtTop) {
+                    Spacer(Modifier.height(if (isLandscape) 4.dp else 16.dp))
                     HoldButton(
                         label = "BACK",
-                        icon = Icons.Default.ArrowBack,
+                        icon = Icons.AutoMirrored.Filled.Undo,
                         color = ButtonBg,
-                        onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x29, Protocol.Keys.BACK, it) }
-                    )
-                    HoldButton(
-                        label = "VOL+",
-                        icon = Icons.Default.Add,
-                        color = ButtonBg,
-                        // Physical remote: long-press UP shows HUD volume overlay + auto-repeat
-                        onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x52, Protocol.Keys.DPAD_UP, it) },
-                        minHoldMs = 2000L
-                    )
-                    HoldButton(
-                        label = "VOL−",
-                        icon = Icons.Default.Remove,
-                        color = ButtonBg,
-                        onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x51, Protocol.Keys.DPAD_DOWN, it) },
-                        minHoldMs = 2000L
+                        onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x29, Protocol.Keys.BACK, it) },
+                        size = backSize
                     )
                 }
             }
+
+            // Volume keys: large circles in the bottom corners
+            HoldButton(
+                label = "",
+                icon = Icons.Default.Add,
+                color = ButtonBg,
+                onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x52, Protocol.Keys.DPAD_UP, it) },
+                size = volSize,
+                minHoldMs = 2000L,
+                modifier = Modifier.align(Alignment.BottomStart)
+            )
+            HoldButton(
+                label = "",
+                icon = Icons.Default.Remove,
+                color = ButtonBg,
+                onPress = { pressHaptic(it); AppGraph.sendReflectiveKey(0x51, Protocol.Keys.DPAD_DOWN, it) },
+                size = volSize,
+                minHoldMs = 2000L,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
         }
 
         // Bottom bar: AA + media + TPMS
@@ -262,18 +273,27 @@ private fun TapButton(
     icon: ImageVector,
     color: Color,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     size: Dp = 76.dp,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape
 ) {
     var pressed by remember { mutableStateOf(false) }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    // While the HID channel is attaching, keep the button visible-but-dim:
+    // pure alpha over black reads as "broken", so give a waiting tint.
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(size)
-                .clip(CircleShape)
-                .background(if (pressed) ButtonPressed else color)
-                .alpha(if (enabled) 1f else 0.35f)
+                .clip(shape)
+                .background(
+                    when {
+                        pressed -> ButtonPressed
+                        enabled -> color
+                        else -> color.copy(alpha = 0.45f)
+                    }
+                )
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
@@ -288,7 +308,7 @@ private fun TapButton(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = Color.White,
+                tint = Color.White.copy(alpha = if (enabled) 1f else 0.5f),
                 modifier = Modifier.size(size * 0.45f)
             )
         }
@@ -308,22 +328,25 @@ private fun RecordButton(
     onToggle: () -> Unit,
     onHaptic: (Boolean) -> Unit,
     label: String,
+    modifier: Modifier = Modifier,
     size: Dp = 76.dp,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape
 ) {
     var pressed by remember { mutableStateOf(false) }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(size)
-                .clip(CircleShape)
-                .alpha(if (enabled) 1f else 0.35f)
+                .clip(shape)
                 .background(
                     when {
                         pressed -> ButtonPressed
-                        isRecording -> RecordRed
-                        else -> RecordRed.copy(alpha = 0.35f)
+                        enabled && isRecording -> RecordRed
+                        enabled -> RecordRed.copy(alpha = 0.35f)
+                        !enabled && isRecording -> RecordRed.copy(alpha = 0.55f)
+                        else -> RecordRed.copy(alpha = 0.18f)
                     }
                 )
                 .pointerInput(Unit) {
@@ -458,40 +481,6 @@ private fun StatusBar(
     }
 }
 
-@Composable
-private fun LeftButtonColumn(
-    onHaptic: (Boolean) -> Unit,
-    buttonSize: Dp = 72.dp,
-    spacing: Dp = 16.dp,
-    showRecord: Boolean = true,
-    isRecording: Boolean = false,
-    onToggleRecord: () -> Unit = {},
-    hidReady: Boolean = true
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(spacing)
-    ) {
-        TapButton(
-            label = "CAM",
-            icon = Icons.Default.Camera,
-            color = CameraBlue,
-            onClick = { AppGraph.sendCameraTrigger() },
-            size = buttonSize,
-            enabled = hidReady
-        )
-        if (showRecord) {
-            RecordButton(
-                isRecording = isRecording,
-                onToggle = onToggleRecord,
-                onHaptic = onHaptic,
-                label = if (isRecording) "STOP" else "REC",
-                size = buttonSize,
-                enabled = hidReady
-            )
-        }
-    }
-}
 
 @Composable
 private fun RightButtonColumn(
@@ -505,7 +494,7 @@ private fun RightButtonColumn(
     ) {
         HoldButton(
             label = "BACK",
-            icon = Icons.Default.ArrowBack,
+            icon = Icons.AutoMirrored.Filled.Undo,
             color = ButtonBg,
             onPress = { onHaptic(it); AppGraph.sendReflectiveKey(0x29, Protocol.Keys.BACK, it) },
             size = buttonSize
@@ -535,16 +524,18 @@ private fun HoldButton(
     icon: ImageVector,
     color: Color,
     onPress: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
     size: Dp = 76.dp,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape,
     minHoldMs: Long = 0
 ) {
     var pressed by remember { mutableStateOf(false) }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(size)
-                .clip(CircleShape)
+                .clip(shape)
                 .background(if (pressed) ButtonPressed else color)
                 .pointerInput(minHoldMs) {
                     detectTapGestures(
@@ -601,14 +592,14 @@ private fun HoldButton(
 }
 
 @Composable
-private fun Dpad(onHaptic: (Boolean) -> Unit) {
+private fun Dpad(onHaptic: (Boolean) -> Unit, sizeDp: Dp = 250.dp) {
     // Long-press center = voice assistant (configurable trigger)
     var centerPressed by remember { mutableStateOf(false) }
     var centerLongPress by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
-            .size(260.dp)
+            .size(sizeDp)
             .clip(CircleShape)
             .background(
                 Brush.radialGradient(
@@ -619,34 +610,38 @@ private fun Dpad(onHaptic: (Boolean) -> Unit) {
     ) {
         // Up
         DpadArrow(
+            size = sizeDp * 0.22f,
             icon = Icons.Default.KeyboardArrowUp,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 12.dp),
+                .padding(top = sizeDp * 0.046f),
             onPress = { onHaptic(it); AppGraph.sendReflectiveKey(0x52, Protocol.Keys.DPAD_UP, it) }
         )
         // Down
         DpadArrow(
+            size = sizeDp * 0.22f,
             icon = Icons.Default.KeyboardArrowDown,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 12.dp),
+                .padding(bottom = sizeDp * 0.046f),
             onPress = { onHaptic(it); AppGraph.sendReflectiveKey(0x51, Protocol.Keys.DPAD_DOWN, it) }
         )
         // Left
         DpadArrow(
+            size = sizeDp * 0.22f,
             icon = Icons.Default.KeyboardArrowLeft,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 12.dp),
+                .padding(start = sizeDp * 0.046f),
             onPress = { onHaptic(it); AppGraph.sendReflectiveKey(0x50, Protocol.Keys.DPAD_LEFT, it) }
         )
         // Right
         DpadArrow(
+            size = sizeDp * 0.22f,
             icon = Icons.Default.KeyboardArrowRight,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 12.dp),
+                .padding(end = sizeDp * 0.046f),
             onPress = { onHaptic(it); AppGraph.sendReflectiveKey(0x4F, Protocol.Keys.DPAD_RIGHT, it) }
         )
 
@@ -706,7 +701,8 @@ private fun Dpad(onHaptic: (Boolean) -> Unit) {
 private fun DpadArrow(
     icon: ImageVector,
     modifier: Modifier = Modifier,
-    onPress: (Boolean) -> Unit
+    onPress: (Boolean) -> Unit,
+    size: Dp = 56.dp
 ) {
     var pressed by remember { mutableStateOf(false) }
 

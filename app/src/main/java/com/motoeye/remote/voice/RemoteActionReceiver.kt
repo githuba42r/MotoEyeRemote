@@ -61,7 +61,8 @@ class RemoteActionReceiver : BroadcastReceiver() {
         when {
             command.startsWith("raw:") || command.startsWith("key:") ||
                 command.startsWith("keyhold:") || command == "hidprobe" ||
-                command.startsWith("hidk:") ->
+                command.startsWith("hidk:") || command.startsWith("svcprobe") ||
+                command.startsWith("adsprobe") ->
                 AppGraph.executeDebugCommand(command)
             command == "camera" -> AppGraph.sendCameraTrigger()
             command == "record" -> keys.click(Protocol.Keys.RECORD)

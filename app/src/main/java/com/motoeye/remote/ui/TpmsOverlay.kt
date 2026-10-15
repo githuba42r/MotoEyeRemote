@@ -19,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,27 +64,67 @@ fun TpmsOverlay(state: TpmsState, onClose: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
 
+            // ---- Direct BLE sensors (Motoeye "VD" advertisements) ----
+            val bleSensors by com.motoeye.remote.AppGraph.tpmsBle.sensors.collectAsState()
+            if (bleSensors.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text("Direct BLE sensors", color = Color(0xFF66BB6A), fontSize = 13.sp)
+                Spacer(Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    bleSensors.values.sortedByDescending { it.rssi }.forEach { s ->
+                        val ageSec = (System.currentTimeMillis() - s.lastSeen) / 1000
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF142233))
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${formatPressure(s.pressurePsi, 1)}  ${formatTemperature(s.temperatureC.toFloat(), 0)}",
+                                    color = Color.White,
+                                    fontSize = 18.sp
+                                )
+                                Text(
+                                    text = "${s.address.takeLast(5)} • ${s.batteryPct}% (298mv-format ${(s.batteryV)}V) • rssi ${s.rssi} • age ${ageSec}s"
+                                        .replace("(298mv-format ", "("),
+                                    color = Color(0xFF9E9E9E),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
             if (!state.isActive) {
-                Spacer(Modifier.height(16.dp))
+                if (bleSensors.isEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "No sensor packets yet — sensors sleep and transmit on pressure change / wheel movement",
+                        color = Color(0xFF9E9E9E),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "No TPMS data from HUD",
-                    color = Color(0xFF9E9E9E),
-                    fontSize = 16.sp
+                    text = "HUD data: firmware too old (needs ≥ 2512121814)",
+                    color = Color(0xFF616161),
+                    fontSize = 11.sp
                 )
-                Text(
-                    text = "Sensors paired: ${state.pairedSensorCount}",
-                    color = Color(0xFF757575),
-                    fontSize = 13.sp
-                )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     androidx.compose.material3.OutlinedButton(onClick = {
                         com.motoeye.remote.AppGraph.connection.enableTpmReporting(true)
-                    }) { Text("Enable reporting", color = Color(0xFF66BB6A)) }
+                    }) { Text("HUD retry", color = Color(0xFF66BB6A)) }
 
                     androidx.compose.material3.OutlinedButton(onClick = {
-                        com.motoeye.remote.AppGraph.connection.requestTpmVehicle()
-                    }) { Text("Refresh", color = Color(0xFF42A5F5)) }
+                        com.motoeye.remote.AppGraph.tpmsBle.stop()
+                        com.motoeye.remote.AppGraph.tpmsBle.start()
+                    }) { Text("Rescan sensors", color = Color(0xFF42A5F5)) }
                 }
             } else {
                 Spacer(Modifier.height(16.dp))
