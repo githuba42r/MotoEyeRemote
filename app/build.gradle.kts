@@ -1,9 +1,47 @@
+import java.util.Base64
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// Version comes from version.properties at the project root (written by the
+// release pipeline); fall back to the last known values for old checkouts
+// that predate the file.
+val versionPropsFile = rootProject.file("version.properties")
+val versionProps = Properties().apply {
+    if (versionPropsFile.isFile) {
+        versionPropsFile.inputStream().use { this.load(it) }
+    }
+}
+val releaseVersionCode = if (versionPropsFile.isFile) {
+    versionProps.getProperty("VERSION_CODE").toInt()
+} else {
+    52 // fallback: last hardcoded versionCode, for old checkouts without version.properties
+}
+val releaseVersionName = if (versionPropsFile.isFile) {
+    "${
+        listOf("VERSION_MAJOR", "VERSION_MINOR", "VERSION_PATCH")
+            .joinToString(".") { p -> versionProps.getProperty(p) }
+    }"
+} else {
+    "0.5.8" // fallback: last hardcoded versionName
+}
+
+// CI keystore: the workflow exports these env vars when a release keystore
+// secret is present; without them the release build stays unsigned.
+val ciKeystoreBase64 = System.getenv("KEYSTORE_BASE64")
+val ciKeystorePassword = System.getenv("KEYSTORE_PASSWORD")
+val ciKeyAlias = System.getenv("KEY_ALIAS")
+val ciKeyPassword = System.getenv("KEY_PASSWORD")
+val hasCiKeystore =
+    !ciKeystoreBase64.isNullOrBlank() &&
+        !ciKeystorePassword.isNullOrBlank() &&
+        !ciKeyAlias.isNullOrBlank() &&
+        !ciKeyPassword.isNullOrBlank()
 
 android {
     namespace = "com.motoeye.remote"
@@ -13,8 +51,28 @@ android {
         applicationId = "com.motoeye.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 52
-        versionName = "0.5.8"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
+    }
+
+    signingConfigs {
+        if (hasCiKeystore) {
+            create("ciRelease") {
+                val keystoreFile = File(
+                    System.getenv("RUNNER_TEMP")
+                        ?: layout.buildDirectory.dir("ci").get().asFile.path,
+                    "motoeye-release.keystore"
+                )
+                keystoreFile.parentFile.mkdirs()
+                Base64.getDecoder().decode(
+                    ciKeystoreBase64!!.replace(Regex("\\s"), "")
+                ).let { decoded -> keystoreFile.writeBytes(decoded) }
+                storeFile = keystoreFile
+                storePassword = ciKeystorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -25,6 +83,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasCiKeystore) {
+                signingConfig = signingConfigs.getByName("ciRelease")
+            }
         }
     }
 
