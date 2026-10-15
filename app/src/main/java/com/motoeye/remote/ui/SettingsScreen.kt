@@ -6,7 +6,13 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +35,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -41,6 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.motoeye.remote.accessibility.AutoControlService
+import com.motoeye.remote.AppGraph
+import com.motoeye.remote.macro.MacroEntity
+import com.motoeye.remote.macro.MacroStep
 import com.motoeye.remote.data.SettingsRepository
 import com.motoeye.remote.media.MediaSessionListener
 import com.motoeye.remote.voice.VoiceShortcuts
@@ -115,21 +128,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onCheckedChange = { scope.launch { settings.setVibration(it) } }
             )
 
-            ToggleRow(
-                title = "Legacy record keycode",
-                subtitle = "Use keycode 133 instead of 134 (M3/M3S firmware)",
-                checked = (s?.recordKeyCode ?: 134) == 133,
-                onCheckedChange = {
-                    scope.launch { settings.setRecordKeyCode(if (it) 133 else 134) }
-                }
-            )
 
             Spacer(Modifier.height(8.dp))
             SectionTitle("Display")
 
             ToggleRow(
-                title = "Show TPMS button",
-                subtitle = "Tire pressure overlay on remote screen",
+                title = "Enable TPMS",
+                subtitle = "Tire pressure display + direct sensor reading",
                 checked = s?.showTpms ?: true,
                 onCheckedChange = { scope.launch { settings.setShowTpms(it) } }
             )
@@ -141,28 +146,104 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onCheckedChange = { scope.launch { settings.setShowRecordButton(it) } }
             )
 
-            ToggleRow(
-                title = "Record button at top",
-                subtitle = "Rarely used — tucks it into the status bar",
-                checked = s?.recordAtTop ?: false,
-                onCheckedChange = { scope.launch { settings.setRecordAtTop(it) } }
-            )
 
-            ChoiceRow(
-                title = "Camera button action",
-                subtitle = "F2 keyboard = the physical remote's CAM button",
-                options = listOf(
-                    "f2hid" to "F2 keyboard",
-                    "cam27" to "Camera 27",
-                    "camkey" to "Camera key",
-                    "mirror" to "Rear camera",
-                    "hid" to "DVR key"
-                ),
-                selected = s?.cameraTrigger ?: "f2hid",
-                onSelect = { scope.launch { settings.setCameraTrigger(it) } }
-            )
 
             Spacer(Modifier.height(8.dp))
+            // ---- Macros: run, add, edit, delete ----
+            val macroList = AppGraph.macroDb.macroDao().observeAll().collectAsState(initial = emptyList())
+            var editing by remember { mutableStateOf<MacroEntity?>(null) }
+            var showEditor by remember { mutableStateOf(false) }
+            var confirmDelete by remember { mutableStateOf<MacroEntity?>(null) }
+            val runningId by AppGraph.macroEngine.runningId.collectAsState()
+            val runScope = rememberCoroutineScope()
+
+            SectionTitle("Macros")
+            macroList.value.sortedBy { it.sortOrder }.forEach { macro ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1E1E1E))
+                        .clickable { editing = macro; showEditor = true }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(macro.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            text = "${macro.steps.size} steps" + (if (macro.id == runningId) " · running…" else ""),
+                            color = if (macro.id == runningId) Color(0xFF66BB6A) else Color(0xFF9E9E9E),
+                            fontSize = 11.sp
+                        )
+                    }
+                    Text("RUN", color = Color(0xFF66BB6A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clickable { if (runningId == null) AppGraph.macroEngine.execute(macro) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp))
+                    Text("EDIT", color = Color(0xFF42A5F5), fontSize = 14.sp,
+                        modifier = Modifier
+                            .clickable { editing = macro; showEditor = true }
+                            .padding(horizontal = 10.dp, vertical = 8.dp))
+                    Text("DEL", color = Color(0xFFF44336), fontSize = 14.sp,
+                        modifier = Modifier
+                            .clickable { confirmDelete = macro }
+                            .padding(horizontal = 10.dp, vertical = 8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            androidx.compose.material3.OutlinedButton(onClick = { editing = null; showEditor = true }) {
+                Text("+ New macro", color = Color(0xFF2196F3))
+            }
+            Spacer(Modifier.height(8.dp))
+
+            confirmDelete?.let { victim ->
+                androidx.compose.ui.window.Dialog(onDismissRequest = { confirmDelete = null }) {
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF1D1D1D))
+                            .padding(16.dp)
+                    ) {
+                        Text("Delete macro", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Delete \"${victim.name}\"?",
+                            color = Color(0xFF9E9E9E), fontSize = 14.sp
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Text("Cancel", color = Color(0xFF9E9E9E), fontSize = 15.sp,
+                                modifier = Modifier
+                                    .clickable { confirmDelete = null }
+                                    .padding(8.dp))
+                            Spacer(Modifier.width(16.dp))
+                            Text("Delete", color = Color(0xFFF44336), fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable {
+                                        confirmDelete = null
+                                        runScope.launch { AppGraph.macroDb.macroDao().delete(victim.id) }
+                                    }
+                                    .padding(8.dp))
+                        }
+                    }
+                }
+            }
+
+            if (showEditor) {
+                MacroEditorDialog(
+                    initial = editing,
+                    onDismiss = { showEditor = false },
+                    onSaved = { m ->
+                        showEditor = false
+                        runScope.launch {
+                            if (m.id == 0L) AppGraph.macroDb.macroDao().insert(m)
+                            else AppGraph.macroDb.macroDao().update(m)
+                        }
+                    }
+                )
+            }
+
             SectionTitle("Permissions & Services")
 
             LinkRow(
@@ -337,44 +418,6 @@ private fun ToggleRow(
     Spacer(Modifier.height(8.dp))
 }
 
-@Composable
-private fun ChoiceRow(
-    title: String,
-    subtitle: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1E1E1E))
-            .padding(16.dp)
-    ) {
-        Text(text = title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(2.dp))
-        Text(text = subtitle, color = Color(0xFF9E9E9E), fontSize = 12.sp)
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { (value, label) ->
-                val isSelected = value == selected
-                Text(
-                    text = if (isSelected) "● $label" else "○ $label",
-                    color = if (isSelected) Color(0xFF2196F3) else Color(0xFF9E9E9E),
-                    fontSize = 13.sp,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (isSelected) Color(0x332196F3) else Color.Transparent)
-                        .clickable { onSelect(value) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-        }
-    }
-    Spacer(Modifier.height(8.dp))
-}
 
 @Composable
 private fun LinkRow(
@@ -400,4 +443,421 @@ private fun LinkRow(
         Text(text = "›", color = Color(0xFF757575), fontSize = 20.sp)
     }
     Spacer(Modifier.height(8.dp))
+}
+
+/** Human labels for the key codes commonly used in HUD macros. */
+private fun keyName(code: Int): String = when (code) {
+    19 -> "Left↑ Up"                         // dpad up
+    20 -> "Down"                             // dpad down
+    21 -> "Left"                             // dpad left
+    22 -> "Right"                            // dpad right
+    66 -> "OK / Enter"
+    4 -> "Back"
+    132 -> "DVR key"
+    134 -> "Record"
+    131 -> "Voice"
+    85 -> "Play/Pause"
+    87 -> "Next"
+    88 -> "Prev"
+    126 -> "Play"
+    127 -> "Pause"
+    24 -> "Volume Up"
+    25 -> "Volume Down"
+    else -> "Key $code"
+}
+
+/** One flippable row in the key picker. */
+private data class KeyChoice(val code: Int)
+
+/** Verb action kinds the macro editor supports. */
+private enum class MacroKind { KEY, WAIT }
+
+/**
+ * Human-friendly macro editor: a vertical list of steps described in words
+ * (Left / Right / OK / hold Back ...), a "+ Add button" button that opens a
+ * key picker with a delay field (default 200 ms), long-press a step row to
+ * delete it. Throws the step grammar only at persistence time.
+ */
+@OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class
+)
+@Composable
+private fun MacroEditorDialog(
+    initial: MacroEntity?,
+    onDismiss: () -> Unit,
+    onSaved: (MacroEntity) -> Unit
+) {
+    data class Row(
+        val kind: MacroKind,
+        val keyCode: Int,     // for KEY
+        val keyDown: Boolean, // KEY true=click/press, false=release
+        val waitMs: Long,     // WAIT value
+        val delayAfter: Long  // applies to KEY rows too
+    )
+
+    // seed rows from the stored grammar
+    fun rowsOf(m: MacroEntity?): MutableList<Row> {
+        val out = mutableListOf<Row>()
+        fun consume(steps: List<MacroStep>) {
+            var i = 0
+            while (i < steps.size) {
+                val st = steps[i]
+                when (st.type) {
+                    "keydown" -> {
+                        // look ahead for a matching keyup
+                        var j = i + 1
+                        while (j < steps.size) {
+                            val f = steps[j]
+                            if (f.type == "keyup" && f.value == st.value) break
+                            if (f.type == "keydown" || f.type == "keyup") break
+                            j++
+                        }
+                        if (j > i + 1 && steps[j].type == "keyup" && steps[j].value == st.value) {
+                            // held key: keydown -> wait -> keyup, shown as one HOLD row
+                            var w: Long = 0
+                            for (k in i + 1 until j) {
+                                if (steps[k].type == "wait") w += (steps[k].value.toLongOrNull() ?: 0)
+                            }
+                            // trailing waits after release become this row's delay
+                            var d: Long = 0
+                            var k2 = j + 1
+                            while (k2 < steps.size && steps[k2].type == "wait") {
+                                d += (steps[k2].value.toLongOrNull() ?: 0)
+                                k2++
+                            }
+                            out.add(Row(MacroKind.KEY, st.value.toIntOrNull() ?: 0, true, w, d))
+                            i = k2
+                            continue
+                        }
+                        out.add(Row(MacroKind.KEY, st.value.toIntOrNull() ?: 0, true, 0, 0))
+                        i++
+                    }
+                    "keyup" -> {
+                        out.add(Row(MacroKind.KEY, st.value.toIntOrNull() ?: 0, false, 0, 0))
+                        i++
+                    }
+                    "wait" -> {
+                        out.add(Row(MacroKind.WAIT, 0, false, st.value.toLongOrNull() ?: 100, 0))
+                        i++
+                    }
+                    "key" -> {
+                        // bare key + trailing wait as delay
+                        var d = st.delayMs
+                        var j = i + 1
+                        while (j < steps.size && steps[j].type == "wait") {
+                            d += steps[j].value.toLongOrNull() ?: 0
+                            j++
+                        }
+                        out.add(Row(MacroKind.KEY, st.value.toIntOrNull() ?: 0, true, 0, d))
+                        i = if (j > i + 1) j else i + 1
+                    }
+                    else -> i++     // media / aakey / intent not offered in picker yet
+                }
+            }
+        }
+        if (m != null) consume(m.steps)
+        return out
+    }
+
+    val rows = remember { mutableStateListOf<Row>().apply { addAll(rowsOf(initial)) } }
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+
+    var showPicker by remember { mutableStateOf(false) }
+    var insertIndex by remember { mutableStateOf(0) }
+    var editIndex by remember { mutableStateOf(-1) }
+    var pickerKey by remember { mutableStateOf(19) }
+    var pickerWaitText by remember { mutableStateOf("200") }
+    var pickerHoldChecked by remember { mutableStateOf(false) }
+    var pickerHoldText by remember { mutableStateOf("600") }
+    var pickerDropdownOpen by remember { mutableStateOf(false) }
+
+    fun serialize(entityId: Long): MacroEntity {
+        val steps = mutableListOf<MacroStep>()
+        rows.forEach { r ->
+            when (r.kind) {
+                MacroKind.KEY -> {
+                    if (r.keyDown) {
+                        if (r.waitMs > 0) {
+                            // press, hold, release = keydown/wait/keyup
+                            steps.add(MacroStep("keydown", r.keyCode.toString()))
+                            steps.add(MacroStep("wait", r.waitMs.toString()))
+                            steps.add(MacroStep("keyup", r.keyCode.toString()))
+                            if (r.delayAfter > 0) steps.add(MacroStep("wait", r.delayAfter.toString()))
+                        } else {
+                            steps.add(MacroStep("key", r.keyCode.toString(), r.delayAfter))
+                        }
+                    } else {
+                        steps.add(MacroStep("keyup", r.keyCode.toString()))
+                    }
+                }
+                MacroKind.WAIT -> steps.add(MacroStep("wait", r.waitMs.toString()))
+            }
+        }
+        return MacroEntity(
+            id = initial?.id ?: 0L,
+            name = name.trim(),
+            icon = initial?.icon ?: "custom",
+            steps = steps,
+            builtin = false,
+            sortOrder = initial?.sortOrder ?: 100
+        )
+    }
+
+    val pickerChoices = remember {
+        listOf(
+            KeyChoice(19), KeyChoice(20), KeyChoice(21), KeyChoice(22),
+            KeyChoice(66), KeyChoice(4),
+            KeyChoice(132), KeyChoice(134), KeyChoice(131),
+            KeyChoice(85), KeyChoice(87), KeyChoice(88),
+            KeyChoice(24), KeyChoice(25)
+        )
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF161616))
+                .padding(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Macro", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                Text("Save",
+                    color = Color(0xFF66BB6A),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable {
+                        if (name.isNotBlank() && rows.isNotEmpty()) onSaved(serialize(initial?.id ?: 0L))
+                    })
+                Spacer(Modifier.width(12.dp))
+                Text("Cancel", color = Color(0xFF9E9E9E), fontSize = 15.sp,
+                    modifier = Modifier.clickable(onClick = onDismiss))
+            }
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // step list
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                itemsIndexed(rows) { idx, r ->
+                    val label = when (r.kind) {
+                        MacroKind.KEY -> when {
+                            r.keyDown && r.waitMs > 0 ->
+                                if (r.delayAfter > 0)
+                                    "HOLD ${keyName(r.keyCode).uppercase()} ${(r.waitMs)}ms · wait ${r.delayAfter}ms"
+                                else "HOLD ${keyName(r.keyCode).uppercase()} ${(r.waitMs)}ms"
+                            r.keyDown -> if (r.delayAfter > 0)
+                                "${keyName(r.keyCode).uppercase()} · wait ${r.delayAfter}ms"
+                            else keyName(r.keyCode).uppercase()
+                            else -> "RELEASE ${keyName(r.keyCode).uppercase()}"
+                        }
+                        MacroKind.WAIT -> "WAIT ${(r.waitMs)}ms"
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF232323))
+                            .clickable {
+                                editIndex = idx
+                                pickerKey = r.keyCode
+                                val isHold = r.kind == MacroKind.KEY && r.keyDown && r.waitMs > 0
+                                pickerHoldChecked = isHold
+                                pickerHoldText = if (isHold) r.waitMs.toString() else "600"
+                                pickerWaitText = when {
+                                    r.kind == MacroKind.WAIT -> r.waitMs.toString()
+                                    r.delayAfter > 0 -> r.delayAfter.toString()
+                                    else -> "200"
+                                }
+                                showPicker = true
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        Text("+ BELOW", color = Color(0xFF42A5F5), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable {
+                                insertIndex = idx + 1
+                                editIndex = -1
+                                pickerHoldChecked = false
+                                pickerWaitText = "200"
+                                showPicker = true
+                            })
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    insertIndex = rows.size
+                    editIndex = -1
+                    pickerHoldChecked = false
+                    pickerWaitText = "200"
+                    showPicker = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("+ Add button", color = Color(0xFF42A5F5)) }
+
+            // key picker dialog: dropdown for the button + wait slider/text field;
+            // doubles as edit (Save/Delete) when opened from a step row
+            if (showPicker) {
+                val waitVal = pickerWaitText.toLongOrNull() ?: 200L
+                val holdVal = pickerHoldText.toLongOrNull() ?: 600L
+                val isEdit = editIndex >= 0
+                androidx.compose.ui.window.Dialog(onDismissRequest = { showPicker = false }) {
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF1D1D1D))
+                            .padding(14.dp)
+                    ) {
+                        Text(if (isEdit) "Edit step" else "Add button",
+                            color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(12.dp))
+                        androidx.compose.material3.ExposedDropdownMenuBox(
+                            expanded = pickerDropdownOpen,
+                            onExpandedChange = { pickerDropdownOpen = it }
+                        ) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = keyName(pickerKey),
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Button") },
+                                trailingIcon = {
+                                    androidx.compose.material3.Icon(
+                                        Icons.Filled.ArrowDropDown,
+                                        contentDescription = null
+                                    )
+                                },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = pickerDropdownOpen,
+                                onDismissRequest = { pickerDropdownOpen = false }
+                            ) {
+                                pickerChoices.forEach { c ->
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(keyName(c.code), color = Color.White) },
+                                        onClick = {
+                                            pickerKey = c.code
+                                            pickerDropdownOpen = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = pickerHoldChecked,
+                                onCheckedChange = { pickerHoldChecked = it }
+                            )
+                            Text("Hold", color = Color.White, fontSize = 14.sp)
+                        }
+                        if (pickerHoldChecked) {
+                            val holdVal = pickerHoldText.toLongOrNull() ?: 600L
+                            Text("Hold duration", color = Color(0xFF9E9E9E), fontSize = 13.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.Slider(
+                                    value = holdVal.coerceIn(200L, 1500L).toFloat(),
+                                    onValueChange = { pickerHoldText = (it.toInt() / 10 * 10).toString() },
+                                    valueRange = 200f..1500f,
+                                    steps = 129,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = pickerHoldText,
+                                    onValueChange = { v -> pickerHoldText = v.filter { it.isDigit() }.take(4) },
+                                    suffix = { Text("ms", color = Color(0xFF9E9E9E), fontSize = 12.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.width(110.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(if (pickerHoldChecked) 10.dp else 14.dp))
+                        Text("Wait after press", color = Color(0xFF9E9E9E), fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Slider(
+                                value = waitVal.coerceIn(200L, 1500L).toFloat(),
+                                onValueChange = { pickerWaitText = (it.toInt() / 10 * 10).toString() },
+                                valueRange = 200f..1500f,
+                                steps = 129,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            androidx.compose.material3.OutlinedTextField(
+                                value = pickerWaitText,
+                                onValueChange = { v -> pickerWaitText = v.filter { it.isDigit() }.take(4) },
+                                suffix = { Text("ms", color = Color(0xFF9E9E9E), fontSize = 12.sp) },
+                                singleLine = true,
+                                modifier = Modifier.width(110.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            if (isEdit) {
+                                Text("DELETE", color = Color(0xFFF44336), fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clickable {
+                                            rows.removeAt(editIndex)
+                                            showPicker = false
+                                            editIndex = -1
+                                        }
+                                        .padding(8.dp))
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Text("Cancel", color = Color(0xFF9E9E9E), fontSize = 15.sp,
+                                modifier = Modifier
+                                    .clickable { showPicker = false; editIndex = -1 }
+                                    .padding(8.dp))
+                            Spacer(Modifier.width(16.dp))
+                            Text(if (isEdit) "Save" else "Add",
+                                color = Color(0xFF66BB6A), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable {
+                                        if (isEdit) {
+                                            val old = rows[editIndex]
+                                            rows[editIndex] = when {
+                                                old.kind == MacroKind.WAIT ->
+                                                    Row(MacroKind.WAIT, 0, false, if (pickerHoldChecked) holdVal else waitVal, 0)
+                                                else -> Row(
+                                                    MacroKind.KEY, pickerKey, true,
+                                                    if (pickerHoldChecked) holdVal else 0,
+                                                    waitVal
+                                                )
+                                            }
+                                        } else {
+                                            rows.add(
+                                                insertIndex.coerceIn(0, rows.size),
+                                                Row(MacroKind.KEY, pickerKey, true,
+                                                    if (pickerHoldChecked) holdVal else 0, waitVal)
+                                            )
+                                        }
+                                        showPicker = false
+                                        editIndex = -1
+                                    }
+                                    .padding(8.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

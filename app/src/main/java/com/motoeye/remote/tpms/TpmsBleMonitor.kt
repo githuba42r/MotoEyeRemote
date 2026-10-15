@@ -56,20 +56,33 @@ class TpmsBleMonitor(private val context: Context) {
 
     @Volatile private var scanning = false
     private var wanted = false
+    @Volatile private var active = false   // user is actively viewing TPMS
 
     fun start() {
         if (wanted) return
         wanted = true
         scope.launch {
             while (isActive && wanted) {
-                scanWindow()
-                delay(25_000) // duty cycle: 12s scan + 25s idle
+                if (active) {
+                    // Continuous windows while the user watches TPMS
+                    scanWindow()
+                    delay(1_000)
+                } else {
+                    scanWindow()
+                    delay(25_000) // duty cycle: 12s scan + 25s idle
+                }
             }
         }
     }
 
+    /** Call when TPMS becomes visible (overlay opened) — guaranteed scan flow */
+    fun setActive(on: Boolean) {
+        active = on
+    }
+
     fun stop() {
         wanted = false
+        active = false
         scanning = false
     }
 
@@ -139,7 +152,7 @@ class TpmsBleMonitor(private val context: Context) {
         // prune stale sensors (not seen for > 10 min)
         val now = sensor.lastSeen
         val updated = (_sensors.value + (addr to sensor)).filterValues {
-            now - it.lastSeen < 600_000
+            now - it.lastSeen < 1_800_000
         }
         _sensors.value = updated
         Log.i(TAG, "RaedLive VDSensor $addr psi=%.1f temp=%d°C bat=%d%% (%.2fV) rssi=%d"

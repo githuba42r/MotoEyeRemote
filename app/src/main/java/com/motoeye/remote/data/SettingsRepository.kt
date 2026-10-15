@@ -23,11 +23,8 @@ data class AppSettings(
     val showTpms: Boolean,
     val showVoiceButton: Boolean,
     val showRecordButton: Boolean,
-    val recordAtTop: Boolean,
-    val cameraTrigger: String,       // "f2hid" (HID keyboard F2 = physical remote CAM), "camkey" (1030), "mirror" (1029), "cam27", "hid132"
     val hidAttachDelaySeconds: Int,  // wait after BLE link-up before stating the HID keyboard channel
     val protocolClickMode: Boolean,  // force JSON click protocol instead of HID
-    val recordKeyCode: Int           // 133 (M3/M3S) or 134
 )
 
 class SettingsRepository(private val context: Context) {
@@ -45,11 +42,8 @@ class SettingsRepository(private val context: Context) {
         val SHOW_TPMS = booleanPreferencesKey("show_tpms")
         val SHOW_VOICE = booleanPreferencesKey("show_voice_button")
         val SHOW_RECORD = booleanPreferencesKey("show_record_button")
-        val RECORD_AT_TOP = booleanPreferencesKey("record_at_top")
-        val CAMERA_TRIGGER = stringPreferencesKey("camera_trigger")
         val HID_DELAY = intPreferencesKey("hid_attach_delay_seconds")
         val CLICK_MODE = booleanPreferencesKey("click_mode")
-        val RECORD_KEY = intPreferencesKey("record_key_code")
     }
 
     val settings: Flow<AppSettings> = ds.data.map { p ->
@@ -64,11 +58,8 @@ class SettingsRepository(private val context: Context) {
             showTpms = p[Keys.SHOW_TPMS] ?: true,
             showVoiceButton = p[Keys.SHOW_VOICE] ?: true,
             showRecordButton = p[Keys.SHOW_RECORD] ?: true,
-            recordAtTop = p[Keys.RECORD_AT_TOP] ?: false,
-            cameraTrigger = p[Keys.CAMERA_TRIGGER] ?: "f2hid",
             hidAttachDelaySeconds = p[Keys.HID_DELAY] ?: 5,
             protocolClickMode = p[Keys.CLICK_MODE] ?: false,
-            recordKeyCode = p[Keys.RECORD_KEY] ?: 134
         )
     }
 
@@ -99,13 +90,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setShowTpms(enabled: Boolean) = ds.edit { it[Keys.SHOW_TPMS] = enabled }
     suspend fun setShowVoiceButton(enabled: Boolean) = ds.edit { it[Keys.SHOW_VOICE] = enabled }
     suspend fun setShowRecordButton(enabled: Boolean) = ds.edit { it[Keys.SHOW_RECORD] = enabled }
-    suspend fun setRecordAtTop(enabled: Boolean) = ds.edit { it[Keys.RECORD_AT_TOP] = enabled }
 
-    suspend fun cameraTrigger(): String = ds.data.first()[Keys.CAMERA_TRIGGER] ?: "f2hid"
-    suspend fun setCameraTrigger(value: String) = ds.edit { it[Keys.CAMERA_TRIGGER] = value }
 
     suspend fun hidAttachDelaySeconds(): Int = ds.data.first()[Keys.HID_DELAY] ?: 5
     suspend fun setHidAttachDelaySeconds(v: Int) = ds.edit { it[Keys.HID_DELAY] = v }
     suspend fun setClickMode(enabled: Boolean) = ds.edit { it[Keys.CLICK_MODE] = enabled }
-    suspend fun setRecordKeyCode(code: Int) = ds.edit { it[Keys.RECORD_KEY] = code }
 }

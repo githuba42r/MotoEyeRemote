@@ -139,27 +139,10 @@ object AppGraph {
         }
     }
 
-    /**
-     * Send the CAM button trigger per the user's configured mode:
-     *  - "f2hid": native HID keyboard report F2 (same as the physical
-     *             remote's CAM button) — the correct system path
-     *  - "cam27": HUD keycode 27 (Android KEYCODE_CAMERA)
-     *  - "camkey": JSON CMD_CMAERA_KEY 1030 (camera key on HUD)
-     *  - "mirror": JSON CMD_REARVIEW_MIRROR 1029 (rear camera display)
-     *  - "hid":    Vidoar keycode 132 (opens DVR on current firmware)
-     */
+    /** CAM button: short F2 via the HID keyboard (same as the physical
+     *  remote's CAM button), the only proven-working channel. */
     fun sendCameraTrigger() {
-        val ctx = appContext
-        appScope.launch {
-            val mode = com.motoeye.remote.data.SettingsRepository(ctx).cameraTrigger()
-            when (mode) {
-                "mirror" -> connection.sendJsonCommand(Protocol.buildRearviewCommand())
-                "camkey" -> connection.sendJsonCommand(Protocol.buildCameraKeyCommand())
-                "hid" -> keySender.click(Protocol.Keys.CAMERA)
-                "cam27" -> keySender.click(Protocol.Keys.CAMERA_KEY)
-                else -> phoneHid.triggerRearView() // f2hid — try the system path
-            }
-        }
+        phoneHid.triggerRearView()
     }
 
     /**

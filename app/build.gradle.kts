@@ -13,8 +13,8 @@ android {
         applicationId = "com.motoeye.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "0.4.3"
+        versionCode = 52
+        versionName = "0.5.8"
     }
 
     buildTypes {

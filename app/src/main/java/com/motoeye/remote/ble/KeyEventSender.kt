@@ -21,7 +21,6 @@ class KeyEventSender(private val connectionManager: BleConnectionManager) {
     fun sendOk(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.ENTER, pressed)
     fun sendBack(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.BACK, pressed)
     fun sendCamera(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.CAMERA, pressed)
-    fun sendRecord(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.RECORD, pressed)
     fun sendVolumeUp(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.VOLUME_UP, pressed)
     fun sendVolumeDown(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.VOLUME_DOWN, pressed)
     fun sendPtt(pressed: Boolean = true) = connectionManager.sendKeyEvent(Protocol.Keys.HEADSETHOOK, pressed)

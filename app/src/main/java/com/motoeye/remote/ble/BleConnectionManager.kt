@@ -297,6 +297,7 @@ class BleConnectionManager(private val context: Context) {
                 val appVersion = try {
                     context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.1.0"
                 } catch (_: Exception) { "0.1.0" }
+                currentVersion = appVersion
                 val deviceInfo = Protocol.buildDeviceInfo(appVersion)
                 sendFramedCommand(deviceInfo)
 
@@ -307,6 +308,7 @@ class BleConnectionManager(private val context: Context) {
                 stopWatch()
                 _connectionState.value = ConnectionState.CONNECTED
                 onConnected?.invoke(savedAddress ?: "")
+                startInfoPoll()
                 Log.i(TAG, "Handshake complete, connected")
 
                 // Read device status again after handshake
@@ -424,6 +426,29 @@ class BleConnectionManager(private val context: Context) {
     private fun extractInt(json: String, key: String): Int? {
         return Regex("\"$key\"\\s*:\\s*(-?\\d+)").find(json)?.groupValues?.get(1)?.toIntOrNull()
     }
+
+    /**
+     * The HUD's own battery percentage arrives inside the type-1000
+     * device-info reply (field "power", % — subagent-verified against the
+     * decompile: HostFragment renders it as "NN%"). The HUD never pushes
+     * it spontaneously, so poll the device info on a cadence while
+     * connected. Battery moves slowly — 45s is plenty.
+     */
+    private fun startInfoPoll() {
+        infoPollJob?.cancel()
+        infoPollJob = scope.launch {
+            while (isActive && isConnected()) {
+                try {
+                    sendFramedCommand(Protocol.buildPing())      // keepalive
+                    sendFramedCommand(Protocol.buildDeviceInfo(currentVersion))
+                } catch (_: Exception) {}
+                delay(45_000)
+            }
+        }
+    }
+    private var infoPollJob: kotlinx.coroutines.Job? = null
+    @Volatile private var currentVersion: String = "0.4.7"
+
 
     private fun parseDeviceInfo(data: String) {
         try {
