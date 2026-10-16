@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.motoeye.remote.service.RemoteForegroundService
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,7 +53,6 @@ import com.motoeye.remote.ble.ConnectionState
 import com.motoeye.remote.ble.DeviceScanner
 import com.motoeye.remote.ble.DiscoveredDevice
 import com.motoeye.remote.data.SettingsRepository
-import com.motoeye.remote.service.RemoteForegroundService
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
@@ -126,7 +126,7 @@ fun DeviceSelectScreen(
     // Auto-connect to saved device once
     LaunchedEffect(savedAddress) {
         if (savedAddress != null && connectionState == ConnectionState.DISCONNECTED) {
-            AppGraph.connection.connect(savedAddress!!)
+            RemoteForegroundService.startConnect(context, savedAddress!!)
         }
     }
 
@@ -194,7 +194,7 @@ fun DeviceSelectScreen(
             Spacer(Modifier.height(12.dp))
             Button(onClick = {
                 ensurePermissions {
-                    AppGraph.connection.connect(savedAddress!!)
+                    RemoteForegroundService.startConnect(context, savedAddress!!)
                 }
             }) {
                 Text("Reconnect")
@@ -242,7 +242,7 @@ fun DeviceSelectScreen(
                         savedAddress = device.address
                         savedName = device.name
                     }
-                    AppGraph.connection.connect(device.address)
+                    RemoteForegroundService.startConnect(context, device.address)
                 }
             }
             if (devices.isEmpty() && !scanning) {

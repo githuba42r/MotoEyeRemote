@@ -603,7 +603,18 @@ class BleConnectionManager(private val context: Context) {
         if (job?.isActive == true) return
         presenceJob = scope.launch {
             var intervalMs = 3000L
+            val startedAt = System.currentTimeMillis()
             while (isActive && isReconnecting && savedAddress != null) {
+                // Give up after 2 minutes of failed attempts: report a plain
+                // DISCONNECTED (→ notification hidden, UI returns to the
+                // device-rescan screen).
+                val elapsed = System.currentTimeMillis() - startedAt
+                if (elapsed > 120_000) {
+                    Log.w(TAG, "Reconnection given up after ${(elapsed / 1000)}s")
+                    isReconnecting = false
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    return@launch
+                }
                 val visible = presenceCheck()
                 if (visible) {
                     Log.i(TAG, "Registered HUD visible — attaching")

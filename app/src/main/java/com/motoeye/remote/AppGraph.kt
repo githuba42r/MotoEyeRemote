@@ -122,7 +122,9 @@ object AppGraph {
                     kotlinx.coroutines.delay(4000)
                     Log.i(TAG, "Auto-connect check: saved=$saved state=${connection.connectionState.value}")
                     if (connection.connectionState.value == ConnectionState.DISCONNECTED) {
-                        connection.connect(saved)
+                        // connect through the foreground service so the status
+                        // notification (and START_STICKY/wake-lock) always ride along
+                        com.motoeye.remote.service.RemoteForegroundService.startConnect(appContext, saved)
                     }
                 }
             }

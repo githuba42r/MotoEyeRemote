@@ -14,6 +14,7 @@ import com.motoeye.remote.AppGraph
 import com.motoeye.remote.R
 import com.motoeye.remote.RemoteApp
 import com.motoeye.remote.ble.ConnectionState
+import com.motoeye.remote.ble.Protocol
 import com.motoeye.remote.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -113,10 +114,9 @@ class RemoteForegroundService : android.app.Service() {
     }
 
     /**
-     * The notification (and foreground state) only exists while the HUD is
-     * connected: hidden the moment the link drops, re-entered on reconnect.
-     * The service itself stays alive in the background so the reconnect
-     * watchdog keeps running.
+     * The notification exists while the HUD is connected OR while a
+     * reconnection attempt is in flight ("short time after disconnection").
+     * Hidden once the presence watch gives up (state DISCONNECTED).
      */
     private fun updateNotification(state: ConnectionState) {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -127,9 +127,17 @@ class RemoteForegroundService : android.app.Service() {
             return
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (state == ConnectionState.CONNECTED) {
+        val text = when (state) {
+            ConnectionState.CONNECTED -> getString(R.string.connected)
+            ConnectionState.RECONNECTING -> "Reconnecting…"
+            ConnectionState.CONNECTING,
+            ConnectionState.DISCOVERING,
+            ConnectionState.HANDSHAKING -> getString(R.string.connecting)
+            else -> null   // DISCONNECTED / SCANNING → hide
+        }
+        if (text != null) {
             startAsForeground()
-            manager.notify(NOTIFICATION_ID, buildNotification(getString(R.string.connected)))
+            manager.notify(NOTIFICATION_ID, buildNotification(text))
         } else {
             hideForeground()
         }
@@ -161,8 +169,9 @@ class RemoteForegroundService : android.app.Service() {
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
-            // Connected-only notification: status + rear-camera trigger
+            // Connected/reconnecting notification: status + rear camera + back
             .addAction(0, getString(R.string.action_camera), actionIntent(ACTION_KEY, 132))
+            .addAction(0, "Back", actionIntent(ACTION_KEY, Protocol.Keys.BACK))
             .addAction(0, getString(R.string.disconnect), actionIntent(ACTION_DISCONNECT))
 
         return builder.build()
