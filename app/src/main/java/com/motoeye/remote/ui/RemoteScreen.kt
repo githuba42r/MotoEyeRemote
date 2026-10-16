@@ -95,6 +95,18 @@ fun RemoteScreen(
 ) {
     val context = LocalContext.current
     val connectionState by AppGraph.connection.connectionState.collectAsState()
+    val hudConnected = connectionState == ConnectionState.CONNECTED
+
+    // Fully disconnected (presence watch gives up after ~2 min) → return to
+    // the device-select/rescan screen automatically.
+    if (connectionState == ConnectionState.DISCONNECTED) {
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(2500)
+            if (AppGraph.connection.connectionState.value == ConnectionState.DISCONNECTED) {
+                onOpenDeviceSelect()
+            }
+        }
+    }
     val tpmsState by AppGraph.tpms.state.collectAsState()
     val mediaPlaying by AppGraph.media.isPlaying.collectAsState()
     var showTpms by remember { mutableStateOf(false) }
@@ -102,7 +114,6 @@ fun RemoteScreen(
 
     // HID channel readiness (camera/record live only when attached)
     val hidReady by AppGraph.phoneHid.isAttached.collectAsState()
-    val hudConnected = connectionState == ConnectionState.CONNECTED
 
     // Settings-driven behavior
     val settings = remember { com.motoeye.remote.data.SettingsRepository(context) }
@@ -256,17 +267,24 @@ fun RemoteScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (macroCount > 0) {
-                    TapButton(
-                        label = "",
-                        icon = Icons.Default.DirectionsRun,
-                        color = Color(0xFF1F3A5F),
-                        onClick = { showMacroSheet = true },
-                        size = if (isLandscape) 50.dp else 56.dp,
-                        enabled = hudConnected,
-                        disabledLabel = "",
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
-                    )
-                    Spacer(Modifier.height(10.dp))
+                    // fixed band keeps the macro at the same height as the
+                    // TPMS readout above VOL− (bottom-anchored, not floating high)
+                    Box(
+                        modifier = Modifier.height(if (isLandscape) 52.dp else 66.dp),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        TapButton(
+                            label = "",
+                            icon = Icons.Default.DirectionsRun,
+                            color = Color(0xFF1F3A5F),
+                            onClick = { showMacroSheet = true },
+                            size = if (isLandscape) 50.dp else 56.dp,
+                            enabled = hudConnected,
+                            disabledLabel = "",
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
                 HoldButton(
                     label = "",
@@ -284,22 +302,25 @@ fun RemoteScreen(
             ) {
                 if (showTpmsButton) {
                     val best = tpmsSensors.values.maxByOrNull { it.lastSeen }
-                    Column(
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    // same fixed band as the macro button (bottom-end anchored)
+                    Box(
+                        modifier = Modifier.height(if (isLandscape) 52.dp else 66.dp),
+                        contentAlignment = Alignment.BottomCenter
                     ) {
                         if (best != null) {
-                            Text(
-                                "%.1f psi".format(best.pressurePsi),
-                                color = Color(0xFF66BB6A),
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "%d°C · %d%%".format(best.temperatureC, best.batteryPct),
-                                color = Color(0xFF9E9E9E),
-                                fontSize = 12.sp
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "%.1f psi".format(best.pressurePsi),
+                                    color = Color(0xFF66BB6A),
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "%d°C · %d%%".format(best.temperatureC, best.batteryPct),
+                                    color = Color(0xFF9E9E9E),
+                                    fontSize = 12.sp
+                                )
+                            }
                         } else {
                             Text(
                                 "TPMS —",
@@ -308,7 +329,7 @@ fun RemoteScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                 }
                 HoldButton(
                     label = "",
