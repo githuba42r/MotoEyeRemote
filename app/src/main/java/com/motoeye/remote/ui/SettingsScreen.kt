@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.motoeye.remote.accessibility.AutoControlService
+import com.motoeye.remote.accessibility.LockControlService
 import com.motoeye.remote.AppGraph
 import com.motoeye.remote.macro.MacroEntity
 import com.motoeye.remote.macro.MacroStep
@@ -95,6 +97,18 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             val s = appSettings
 
+            // Live-refresh the permission/service rows (they point into system
+            // settings; came-back-from-system-settings needs a re-read).
+            var a11yTick by remember { mutableStateOf(0) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(1500)
+                    a11yTick++
+                }
+            }
+            @Suppress("UNUSED_EXPRESSION")
+            a11yTick
+
             SectionTitle("Connection")
 
             ToggleRow(
@@ -128,6 +142,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onCheckedChange = { scope.launch { settings.setVibration(it) } }
             )
 
+            ToggleRow(
+                title = "Lock screen controls",
+                subtitle = "D-pad, rear camera and BACK above the lock screen — control the HUD while the phone is locked. Requires the lock-screen accessibility service below.",
+                checked = s?.showLockScreenControls ?: false,
+                onCheckedChange = { scope.launch { settings.setShowLockScreenControls(it) } }
+            )
 
             Spacer(Modifier.height(8.dp))
             SectionTitle("Display")
@@ -222,7 +242,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 modifier = Modifier
                                     .clickable {
                                         confirmDelete = null
-                                        runScope.launch { AppGraph.macroDb.macroDao().delete(victim.id) }
+                                        runScope.launch {
+                                            // deleting a seeded example keeps it deleted forever
+                                            if (victim.builtin) settings.markBuiltinDeleted(victim.name)
+                                            AppGraph.macroDb.macroDao().delete(victim.id)
+                                        }
                                     }
                                     .padding(8.dp))
                         }
@@ -250,6 +274,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                 title = "Android Auto control",
                 subtitle = if (AutoControlService.isEnabled) "Enabled" else "Enable accessibility service",
                 accent = if (AutoControlService.isEnabled) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                onClick = {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            )
+
+            LinkRow(
+                title = "Lock screen controls service",
+                subtitle = if (LockControlService.isEnabled(context)) "Enabled" else "Enable accessibility service (for the lock-screen pad)",
+                accent = if (LockControlService.isEnabled(context)) Color(0xFF4CAF50) else Color(0xFFFF9800),
                 onClick = {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }

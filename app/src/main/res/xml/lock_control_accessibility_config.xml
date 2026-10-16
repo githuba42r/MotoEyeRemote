@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lock-screen remote controls. The overlay is a TYPE_ACCESSIBILITY_OVERLAY,
+     which is what lets the D-pad / rear camera / back panel appear above the
+     keyguard while the phone is locked. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/lock_control_desc"
+    android:summary="Remote controls on the lock screen"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="false"
+    android:canRequestFilterKeyEvents="false"
+    android:accessibilityFlags="flagDefault" />

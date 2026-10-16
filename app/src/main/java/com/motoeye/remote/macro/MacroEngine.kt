@@ -175,7 +175,7 @@ class MacroEngine(private val context: Context) {
          * HOME (launcher) -> navigate to app icon -> OK. Exact sequences
          * depend on the HUD launcher layout and are user-adjustable.
          */
-        suspend fun seedBuiltins(dao: MacroDao) {
+         suspend fun seedBuiltins(dao: MacroDao, settings: com.motoeye.remote.data.SettingsRepository) {
             fun key(code: Int, delay: Long = 200) =
                 MacroStep("key", code.toString(), delay)
 
@@ -194,11 +194,12 @@ class MacroEngine(private val context: Context) {
             )
 
             // 1) EUC World: hold BACK to main screen, 8 right, 1 down, OK
+            val deleted = settings.deletedBuiltinNames()
             val eucSteps = holdBack(600, 400) + rights(8) + listOf(
                 key(Protocol.Keys.DPAD_DOWN, 220),
                 key(Protocol.Keys.ENTER, 500)
             )
-            seedOrUpdate(dao, name = "EUC World", icon = "euc", sortOrder = 0, steps = eucSteps)
+            seedOrUpdate(dao, name = "EUC World", icon = "euc", sortOrder = 0, steps = eucSteps, deleted = deleted)
 
             // 2) Headset settings: hold BACK, 4 right, enter, 3 down, enter
             val hsSteps = holdBack(600, 400) + rights(4) + listOf(
@@ -206,20 +207,22 @@ class MacroEngine(private val context: Context) {
             ) + downs(3) + listOf(
                 key(Protocol.Keys.ENTER, 500)
             )
-            seedOrUpdate(dao, name = "Headset settings", icon = "hs", sortOrder = 1, steps = hsSteps)
+            seedOrUpdate(dao, name = "Headset settings", icon = "hs", sortOrder = 1, steps = hsSteps, deleted = deleted)
 
             seedOrUpdate(dao, name = "Rear Camera", icon = "camera", sortOrder = 2,
-                steps = listOf(key(Protocol.Keys.CAMERA, 60)))
+                steps = listOf(key(Protocol.Keys.CAMERA, 60)), deleted = deleted)
             dao.getAll().firstOrNull { it.name == "Rear Camera" }?.let {
                 if (!it.builtin) { /* keep user rows */ }
             }
         }
 
-        /** Insert the seeded macro if missing; refresh steps if it changed. */
+        /** Insert the seeded macro if missing; refresh steps if it changed.
+         *  Macros the user explicitly deleted are never re-seeded. */
         private suspend fun seedOrUpdate(
             dao: MacroDao, name: String, icon: String, sortOrder: Int,
-            steps: List<MacroStep>
+            steps: List<MacroStep>, deleted: Set<String>
         ) {
+            if (name in deleted) return
             val existing = dao.getAll().firstOrNull { it.name == name }
             if (existing == null) {
                 dao.insert(MacroEntity(name = name, icon = icon, builtin = true, sortOrder = sortOrder, steps = steps))

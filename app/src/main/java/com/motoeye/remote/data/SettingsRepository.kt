@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,6 +26,7 @@ data class AppSettings(
     val showRecordButton: Boolean,
     val hidAttachDelaySeconds: Int,  // wait after BLE link-up before stating the HID keyboard channel
     val protocolClickMode: Boolean,  // force JSON click protocol instead of HID
+    val showLockScreenControls: Boolean, // keyguard overlay: D-pad, rear camera, back
 )
 
 class SettingsRepository(private val context: Context) {
@@ -44,6 +46,8 @@ class SettingsRepository(private val context: Context) {
         val SHOW_RECORD = booleanPreferencesKey("show_record_button")
         val HID_DELAY = intPreferencesKey("hid_attach_delay_seconds")
         val CLICK_MODE = booleanPreferencesKey("click_mode")
+        val LOCK_SCREEN = booleanPreferencesKey("lock_screen_controls")
+        val DELETED_BUILTINS = stringSetPreferencesKey("deleted_builtin_macros")
     }
 
     val settings: Flow<AppSettings> = ds.data.map { p ->
@@ -60,6 +64,7 @@ class SettingsRepository(private val context: Context) {
             showRecordButton = p[Keys.SHOW_RECORD] ?: true,
             hidAttachDelaySeconds = p[Keys.HID_DELAY] ?: 5,
             protocolClickMode = p[Keys.CLICK_MODE] ?: false,
+            showLockScreenControls = p[Keys.LOCK_SCREEN] ?: false,
         )
     }
 
@@ -95,4 +100,14 @@ class SettingsRepository(private val context: Context) {
     suspend fun hidAttachDelaySeconds(): Int = ds.data.first()[Keys.HID_DELAY] ?: 5
     suspend fun setHidAttachDelaySeconds(v: Int) = ds.edit { it[Keys.HID_DELAY] = v }
     suspend fun setClickMode(enabled: Boolean) = ds.edit { it[Keys.CLICK_MODE] = enabled }
+    suspend fun setShowLockScreenControls(enabled: Boolean) = ds.edit { it[Keys.LOCK_SCREEN] = enabled }
+
+    /** Names of seeded builtin macros the user deleted — they must never be
+     *  re-seeded (only install-time examples, not persistent fixtures). */
+    suspend fun markBuiltinDeleted(name: String) = ds.edit {
+        it[Keys.DELETED_BUILTINS] = (it[Keys.DELETED_BUILTINS] ?: emptySet()) + name
+    }
+
+    suspend fun deletedBuiltinNames(): Set<String> =
+        ds.data.first()[Keys.DELETED_BUILTINS] ?: emptySet()
 }

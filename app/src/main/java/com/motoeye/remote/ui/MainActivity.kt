@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import com.motoeye.remote.AppGraph
 import com.motoeye.remote.voice.VoiceShortcuts
 
@@ -82,6 +83,18 @@ class MainActivity : ComponentActivity() {
 private fun RemoteAppUi(initialScreen: Screen = Screen.Connect) {
     var screen by remember { mutableStateOf(initialScreen) }
     var settingsReturnScreen by remember { mutableStateOf<Screen>(Screen.Remote) }
+
+    // Gesture/tap back from Settings returns to the screen that opened it
+    // instead of finishing the Activity (previous default behaviour).
+    if (screen == Screen.Settings) {
+        androidx.activity.compose.BackHandler { screen = settingsReturnScreen }
+    }
+    if (screen == Screen.Connect) {
+        val unlockCtx = LocalContext.current
+        androidx.activity.compose.BackHandler {
+            (unlockCtx as? android.app.Activity)?.finish()
+        }
+    }
 
     when (val s = screen) {
         Screen.Connect -> DeviceSelectScreen(

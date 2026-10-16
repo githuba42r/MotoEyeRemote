@@ -58,6 +58,7 @@
     <string name="voice_phrases_title">Voice Phrases</string>
     <string name="voice_phrases_desc">Say \"OK Google, MotoEye [command]\" to control the remote</string>
     <string name="accessibility_service_desc">Enables Android Auto control (exit projection, inject back/home keys) from the MotoEye Remote app.</string>
+    <string name="lock_control_desc">Shows the MotoEye Remote D-pad, rear-view camera and back buttons above the lock screen while the phone is locked, so the HUD can be controlled without unlocking (API trusted-service overlay).</string>
     <string name="notification_listener_desc">Enables media controls by detecting active media sessions (Amazon Music, YouTube, Spotify, etc.)</string>
     <string name="enable_in_settings">Enable in Settings</string>
     <string name="status_enabled">Enabled</string>

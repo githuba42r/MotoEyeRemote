@@ -30,7 +30,7 @@ class RemoteForegroundService : android.app.Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var wakeLock: PowerManager.WakeLock? = null
-    private var startedInForeground = false
+    private var foregroundActive = false
 
     override fun onCreate() {
         super.onCreate()
@@ -79,8 +79,8 @@ class RemoteForegroundService : android.app.Service() {
     }
 
     private fun startAsForeground() {
-        if (startedInForeground) return
-        val notification = buildNotification("Starting…")
+        if (foregroundActive) return
+        val notification = buildNotification(getString(R.string.connecting))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -90,7 +90,18 @@ class RemoteForegroundService : android.app.Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        startedInForeground = true
+        foregroundActive = true
+    }
+
+    private fun hideForeground() {
+        if (!foregroundActive) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        foregroundActive = false
     }
 
     private fun observeConnection() {
@@ -101,6 +112,12 @@ class RemoteForegroundService : android.app.Service() {
         }
     }
 
+    /**
+     * The notification (and foreground state) only exists while the HUD is
+     * connected: hidden the moment the link drops, re-entered on reconnect.
+     * The service itself stays alive in the background so the reconnect
+     * watchdog keeps running.
+     */
     private fun updateNotification(state: ConnectionState) {
         if (Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(
@@ -110,16 +127,12 @@ class RemoteForegroundService : android.app.Service() {
             return
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        val text = when (state) {
-            ConnectionState.CONNECTED -> getString(R.string.connected)
-            ConnectionState.CONNECTING,
-            ConnectionState.DISCOVERING,
-            ConnectionState.HANDSHAKING -> getString(R.string.connecting)
-            ConnectionState.RECONNECTING -> "Reconnecting…"
-            ConnectionState.SCANNING -> getString(R.string.scanning)
-            ConnectionState.DISCONNECTED -> getString(R.string.disconnected)
+        if (state == ConnectionState.CONNECTED) {
+            startAsForeground()
+            manager.notify(NOTIFICATION_ID, buildNotification(getString(R.string.connected)))
+        } else {
+            hideForeground()
         }
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun buildNotification(statusText: String): Notification {
@@ -148,11 +161,8 @@ class RemoteForegroundService : android.app.Service() {
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
+            // Connected-only notification: status + rear-camera trigger
             .addAction(0, getString(R.string.action_camera), actionIntent(ACTION_KEY, 132))
-            .addAction(0, getString(R.string.action_record), actionIntent(ACTION_KEY, 134))
-            .addAction(0, getString(R.string.action_vol_up), actionIntent(ACTION_KEY, 19))
-            .addAction(0, getString(R.string.action_vol_down), actionIntent(ACTION_KEY, 20))
-            .addAction(0, getString(R.string.action_voice), actionIntent(ACTION_KEY, 131))
             .addAction(0, getString(R.string.disconnect), actionIntent(ACTION_DISCONNECT))
 
         return builder.build()

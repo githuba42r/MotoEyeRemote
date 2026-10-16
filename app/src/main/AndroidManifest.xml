@@ -89,6 +89,7 @@
         <!-- Accessibility Service for Android Auto control -->
         <service
             android:name=".accessibility.AutoControlService"
+            android:label="MotoEye Remote — Android Auto / Exit AA"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -97,6 +98,20 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Lock-screen remote pad (D-pad / rear camera / back above the keyguard) -->
+        <service
+            android:name=".accessibility.LockControlService"
+            android:label="MotoEye Remote — Lock screen pad"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lock_control_accessibility_config" />
         </service>
 
         <!-- Notification Listener for media session discovery -->

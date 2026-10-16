@@ -102,9 +102,14 @@ object AppGraph {
                 }
             }
 
-            // Seed builtin macros
+            // Seed builtin macros (honours user deletions)
             appScope.launch {
-                runCatching { MacroEngine.seedBuiltins(macroDb.macroDao()) }
+                runCatching {
+                    MacroEngine.seedBuiltins(
+                        macroDb.macroDao(),
+                        com.motoeye.remote.data.SettingsRepository(appContext)
+                    )
+                }
             }
 
             // App-level auto-connect fallback: if a saved HUD exists and the
