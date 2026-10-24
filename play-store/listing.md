@@ -125,7 +125,7 @@ Later releases get their notes from the commit subjects (the `play` job in `rele
 
 Play's form asks for a description and a video, and requires an **in-app prominent disclosure** that the user accepts before the app opens Android's accessibility settings.
 
-> ⚠️ **App change needed first.** At the moment `SettingsScreen.kt` (lines 278 and 287) opens `ACTION_ACCESSIBILITY_SETTINGS` directly, with no disclosure. Add a dialog with the text below and Accept / Not now buttons before each intent.
+✅ **Done in v1.3.0.** `SettingsScreen.kt` shows an `AccessibilityDisclosureDialog` before opening `ACTION_ACCESSIBILITY_SETTINGS`. Only "Agree" opens the settings; "Not now", back or tapping outside declines. The demo video is `motoeye-accessibility-disclosure.mp4`, recorded 2026-10-24. The dialog text in the app follows the suggestions below.
 
 Suggested disclosure, lock-screen pad:
 ```
@@ -171,8 +171,8 @@ If Play rejects this declaration, the fallback is to drop the permission and sen
 
 ## Before you submit
 
-- [ ] Add the accessibility prominent-disclosure dialogs (app change)
-- [ ] Record the demo video (HUD connected; disclosure; lock-screen pad; notification) and upload it to YouTube, unlisted is fine
+- [x] Add the accessibility prominent-disclosure dialogs (app change, v1.3.0)
+- [x] Record the demo videos: `motoeye-accessibility-disclosure.mp4` (disclosure → Agree → enable) and `motoeye-foreground-service.mp4` (connect → ongoing notification → Camera action). Upload both to YouTube as unlisted.
 - [ ] Decide on the listing title (recommended: "Remote for MotoEye E6 HUD")
 - [ ] Optional: remove the unused `INTERNET` permission
 - [ ] Fix the landscape layout overlap, or lock the remote screen to portrait. Reviewers on tablets and foldables will see landscape.
