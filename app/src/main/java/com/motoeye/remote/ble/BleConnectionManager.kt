@@ -578,11 +578,29 @@ class BleConnectionManager(private val context: Context) {
             reconnectAttempt++
             if (reconnectAttempt == 1) {
                 // The HUD likely just dropped — try a direct reconnect quickly.
-                // If this fails, DISCONNECTED fires and re-enters here (attempt
-                // 2+), which switches to presence-watch mode.
+                // Bounded by an 8s watchdog below: an autoConnect=true GATT
+                // against a powered-off HUD stays pending with NO callback
+                // forever, which would deadlock the whole cycle otherwise.
                 delay(1000)
                 Log.i(TAG, "Reconnect attempt $reconnectAttempt (direct)")
                 savedAddress?.let { doConnect(it, autoConnect = true) }
+                scope.launch {
+                    var waited = 0
+                    while (waited < 8000 &&
+                        (_connectionState.value == ConnectionState.CONNECTING ||
+                         _connectionState.value == ConnectionState.DISCOVERING)
+                    ) {
+                        delay(500); waited += 500
+                    }
+                    if (_connectionState.value == ConnectionState.CONNECTING ||
+                        _connectionState.value == ConnectionState.DISCOVERING
+                    ) {
+                        Log.w(TAG, "Direct attempt unresolved after 8s — falling back to presence watch")
+                        cleanupGatt()
+                        _connectionState.value = ConnectionState.DISCONNECTED
+                        scheduleReconnect()
+                    }
+                }
             } else if (presenceJob?.isActive != true) {
                 Log.i(TAG, "Reconnect attempt $reconnectAttempt (presence watch)")
                 startPresenceWatch()
