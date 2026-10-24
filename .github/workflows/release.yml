@@ -6,8 +6,11 @@ name: release
 #               commits since the last release, commits version.properties,
 #               tags it
 #   build    -> signed release APK (when the keystore secrets are present;
-#               unsigned otherwise)
+#               unsigned otherwise), plus an AAB signed with the Play
+#               upload key
 #   release  -> one GitHub Release carrying the APK, notes generated inline
+#   play     -> AAB to Google Play (internal track by default); gated on
+#               the repo variable PLAY_PUBLISH=true
 #
 # Nothing releasable (docs/chore/style-only commits) => plan reports
 # should_release=false and every other job is skipped.
@@ -133,6 +136,74 @@ jobs:
           name: android-apk
           path: artifacts/*.apk
           if-no-files-found: error
+      # Play gets an AAB signed with the separate upload key (Play App Signing
+      # holds the app signing key). Same env vars, different secrets - the
+      # Gradle signing config only reads KEYSTORE_*/KEY_*.
+      - name: Build the Play AAB (signed with the upload key)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon bundleRelease
+          mkdir -p play
+          cp app/build/outputs/bundle/release/app-release.aab "play/motoeye-${VERSION}-release.aab"
+          cp app/build/outputs/mapping/release/mapping.txt play/mapping.txt
+          rm -f "$RUNNER_TEMP/motoeye-release.keystore"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: play/
+          if-no-files-found: error
+
+  # Upload to Google Play. Off until the repo variable PLAY_PUBLISH=true: the
+  # first bundle must be uploaded by hand in the Play Console. While the app
+  # has never passed review, Play only accepts draft releases, so
+  # PLAY_RELEASE_STATUS stays "draft" until then, then becomes "completed".
+  play:
+    needs: [plan, build]
+    if: >-
+      needs.plan.outputs.should_release == 'true' &&
+      needs.plan.outputs.dry_run != 'true' &&
+      vars.PLAY_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-aab
+          path: play
+      - name: Write the "What's new" text
+        run: |
+          set -euo pipefail
+          mkdir -p whatsnew
+          prev_tag=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1 || true)
+          range="${prev_tag:+${prev_tag}..}${TAG}"
+          # Play caps release notes at 500 characters per language.
+          git log "$range" --pretty='- %s' --no-merges \
+            | grep -v '^- chore(release)' \
+            | sed -E 's/^- [a-z]+(\([^)]*\))?!?: /- /' \
+            | head -c 495 >whatsnew/whatsnew-en-US || true
+          [ -s whatsnew/whatsnew-en-US ] || echo "Bug fixes and improvements." >whatsnew/whatsnew-en-US
+          cat whatsnew/whatsnew-en-US >>"$GITHUB_STEP_SUMMARY"
+      - uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.a42r.motoeye.remote
+          releaseFiles: play/motoeye-${{ needs.plan.outputs.version }}-release.aab
+          releaseName: ${{ needs.plan.outputs.version }} (${{ needs.plan.outputs.code }})
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          mappingFile: play/mapping.txt
+          whatsNewDirectory: whatsnew
 
   release:
     needs: [plan, build]

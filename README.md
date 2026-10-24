@@ -7,7 +7,7 @@
 Grab the latest signed APK from
 https://github.com/githuba42r/MotoEyeRemote/releases/latest.
 
-Full-screen Android remote (`com.motoeye.remote`) that replaces the small physical
+Full-screen Android remote (`com.a42r.motoeye.remote`) that replaces the small physical
 BLE remote shipped with the MotoEye E6 motorcycle HUD. The phone connects to the
 HUD as a second Vidoar-protocol remote over BLE and presents a glove-friendly
 full-screen UI: D-pad + OK, BACK, volume hold-keys, camera trigger, record

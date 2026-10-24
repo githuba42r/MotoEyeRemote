@@ -45,12 +45,12 @@ val hasCiKeystore =
 
 android {
     namespace = "com.motoeye.remote"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.motoeye.remote"
+        applicationId = "com.a42r.motoeye.remote"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = releaseVersionCode
         versionName = releaseVersionName
     }

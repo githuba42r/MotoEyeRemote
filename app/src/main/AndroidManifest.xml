@@ -35,8 +35,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
 
     <!-- Internet (for future OTA updates) -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -45,6 +43,17 @@
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
+
+    <!-- Macros launch user-chosen apps by package; launcher-intent visibility is
+         enough for getLaunchIntentForPackage (no QUERY_ALL_PACKAGES needed) -->
+    <queries>
+        <!-- Android Auto has no launcher icon on newer phones -->
+        <package android:name="com.google.android.projection.gearhead" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".RemoteApp"
