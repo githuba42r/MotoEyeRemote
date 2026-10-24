@@ -1,0 +1,13 @@
+{
+  "name": "MotoEye Remote",
+  "short_name": "MotoEye Remote",
+  "description": "Full-screen, glove-friendly Android remote for the MotoEye E6 motorcycle HUD.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#07090c",
+  "theme_color": "#07090c",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/images/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

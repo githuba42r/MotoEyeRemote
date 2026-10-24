@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotoEye E6 HUD remote setup — MotoEye Remote</title>
+<meta name="description" content="Install MotoEye Remote, pair your phone with a MotoEye E6 HUD, set up camera, DVR and TPMS, and see what each permission is for. With troubleshooting.">
+<link rel="canonical" href="https://motoeye-remote.a42r.com/setup">
+<meta name="theme-color" content="#07090c">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="MotoEye Remote">
+<meta property="og:locale" content="en_AU">
+<meta property="og:title" content="Set up MotoEye Remote with your MotoEye E6 HUD">
+<meta property="og:description" content="Install, pair with the HUD, enable camera, DVR and TPMS, and what each permission is for.">
+<meta property="og:url" content="https://motoeye-remote.a42r.com/setup">
+<meta property="og:image" content="https://motoeye-remote.a42r.com/images/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "HowTo",
+      "name": "Set up MotoEye Remote with a MotoEye E6 HUD",
+      "description": "Install MotoEye Remote on an Android phone and pair it with a MotoEye E6 motorcycle HUD as a second remote.",
+      "tool": [{ "@type": "HowToTool", "name": "Android phone with Bluetooth LE (Android 8.0 or later)" }, { "@type": "HowToTool", "name": "MotoEye E6 HUD" }],
+      "step": [
+        { "@type": "HowToStep", "name": "Install the app", "url": "https://motoeye-remote.a42r.com/setup#install", "text": "Download the latest signed APK from GitHub Releases and install it." },
+        { "@type": "HowToStep", "name": "Connect to the HUD", "url": "https://motoeye-remote.a42r.com/setup#connect", "text": "Power on the HUD, open the app, tap Scan for devices and choose your HUD. Accept the Bluetooth pairing request." },
+        { "@type": "HowToStep", "name": "Allow permissions", "url": "https://motoeye-remote.a42r.com/setup#permissions", "text": "Allow Nearby devices and notifications, and optionally battery optimisation exemption, notification access and the accessibility services." },
+        { "@type": "HowToStep", "name": "Mount and ride", "url": "https://motoeye-remote.a42r.com/setup#ride", "text": "Mount the phone, keep the app open or use the lock-screen pad, and ride." }
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "MotoEye Remote", "item": "https://motoeye-remote.a42r.com/" },
+        { "@type": "ListItem", "position": 2, "name": "Setup", "item": "https://motoeye-remote.a42r.com/setup" }
+      ]
+    }
+  ]
+}
+</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="brand" href="/" aria-label="MotoEye Remote home">
+      <img class="brand-mark" src="images/logo.svg" alt="" width="30" height="30">
+      <span class="brand-name">MotoEye Remote</span>
+    </a>
+    <nav class="head-nav" aria-label="Main">
+      <a href="/">App</a>
+      <a href="/setup" aria-current="page">Setup</a>
+      <a href="/privacy">Privacy</a>
+      <a href="https://github.com/githuba42r/MotoEyeRemote">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <section class="page-hero">
+      <span class="eyebrow">Setup guide</span>
+      <h1>Set up MotoEye Remote with your E6 HUD</h1>
+      <p class="lede">Five minutes from install to riding. You need an Android
+      phone running Android 8.0 or later and a MotoEye E6 HUD.</p>
+    </section>
+
+    <div class="page-body prose">
+
+      <h2 id="install">1. Install the app</h2>
+      <p>Download the latest <strong>motoeye-x.y.z-release.apk</strong> from
+      <a href="https://github.com/githuba42r/MotoEyeRemote/releases/latest">GitHub
+      Releases</a> and open it on your phone. Android will ask you to allow
+      installs from your browser or file manager the first time. A Google Play
+      listing is coming; once it is live, Play updates the app for you.</p>
+      <div class="note">
+        <p><strong>Moving from an early APK?</strong> Versions before 1.1 used a
+        different app ID (<code>com.motoeye.remote</code>). The current app
+        installs alongside it — uninstall the old one and set up again.</p>
+      </div>
+
+      <h2 id="connect">2. Connect to the HUD</h2>
+      <ol class="step-list">
+        <li><strong>Power on the HUD</strong> and make sure it is not connected to
+        another phone running MotoEye Remote.</li>
+        <li><strong>Open MotoEye Remote</strong> and tap <em>Scan for
+        devices</em>. Allow <em>Nearby devices</em> when asked.</li>
+        <li><strong>Pick your HUD</strong> from the list and accept the Bluetooth
+        pairing prompt. The status turns green: <em>Connected</em>.</li>
+        <li><strong>Wait a few seconds for CAM and REC.</strong> The camera
+        buttons light up once the keyboard channel attaches (default delay 5 s,
+        adjustable under <em>Settings → Advanced</em>).</li>
+      </ol>
+      <p>From then on the app reconnects to that HUD automatically when you open
+      it, and after the HUD drops out or is switched off and on again.</p>
+
+      <h2 id="permissions">3. Permissions, and what each one is for</h2>
+      <p>Only <em>Nearby devices</em> is required. Everything else switches on
+      an optional feature, and the app works without it.</p>
+      <div class="table-scroll">
+        <table class="perm-table">
+          <thead>
+            <tr><th scope="col">Permission</th><th scope="col">Why</th><th scope="col">Needed?</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Nearby devices (Bluetooth)</td><td>Find and connect to the HUD and read the TPMS tyre sensors.</td><td>Yes</td></tr>
+            <tr><td>Location (Android 11 and older only)</td><td>Older Android versions require it for any Bluetooth scan. The app never reads your location.</td><td>Android 8–11</td></tr>
+            <tr><td>Notifications</td><td>The “connected” notification with Camera and BACK actions, which also keeps the link alive in the background.</td><td>Recommended</td></tr>
+            <tr><td>Ignore battery optimisation</td><td>Stops Android putting the app to sleep mid-ride, so reconnects still work with the screen off.</td><td>Recommended</td></tr>
+            <tr><td>Notification access</td><td>Finds which app is playing media so Play, Previous and Next control it.</td><td>For media keys</td></tr>
+            <tr><td>Accessibility: “Android Auto / Exit AA”</td><td>Performs the Home action for the Exit AA button. It cannot read screen content.</td><td>For Exit AA</td></tr>
+            <tr><td>Accessibility: “Lock screen pad”</td><td>Draws the D-pad, camera and BACK buttons above the lock screen. It cannot read screen content.</td><td>For lock-screen pad</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <p><strong>About the accessibility services.</strong> Android only lets an
+        app draw over the lock screen or press Home through an accessibility
+        service. Both MotoEye Remote services are configured with window-content
+        retrieval switched off, ignore every accessibility event, and collect
+        nothing. You turn each on separately from <em>Settings → Permissions &amp;
+        Services</em>, and you can turn them off at any time in Android's
+        accessibility settings.</p>
+      </div>
+
+      <h2 id="features">4. Set up the extras</h2>
+      <ul>
+        <li><strong>Tyre pressure (TPMS).</strong> MotoEye TPMS sensors sleep when
+        idle and transmit on motion or a pressure change. Roll the wheel and the
+        readout (pressure, temperature, sensor battery) appears on the remote.
+        Readings older than 30 minutes are dropped.</li>
+        <li><strong>Recording.</strong> Turn on <em>Show record button</em> to add
+        REC. A long press toggles background DVR recording on the HUD; the HUD
+        doesn't report its state, so the button label follows your presses.</li>
+        <li><strong>Macros.</strong> <em>Settings → Macros → New macro</em>. Add
+        keys in order, with a hold time and a delay after each one, then run it
+        from the macro button on the remote.</li>
+        <li><strong>Lock-screen pad.</strong> Turn on <em>Lock screen
+        controls</em> and enable the <em>Lock screen pad</em> accessibility
+        service.</li>
+        <li><strong>Voice.</strong> Turn on <em>Long-press OK for voice</em> to
+        start Google Assistant from the D-pad, or add Assistant shortcuts under
+        <em>Voice commands</em>.</li>
+      </ul>
+
+      <h2 id="ride">5. Ride</h2>
+      <p>Mount the phone where you can reach it without stretching. Turn on
+      <em>Keep awake</em> if you want the screen on the whole ride, or lock the
+      phone and use the lock-screen pad. Use the remote only when it is safe and
+      legal where you ride.</p>
+
+      <h2 id="troubleshooting">Troubleshooting</h2>
+      <div class="faq">
+        <details>
+          <summary>The HUD doesn't show up when I scan</summary>
+          <p>Check that Bluetooth and Nearby devices are allowed, then
+          power-cycle the HUD and scan again straight away. If another phone is
+          connected to the HUD as a remote, close MotoEye Remote there
+          first.</p>
+        </details>
+        <details>
+          <summary>CAM and REC stay grey after connecting</summary>
+          <p>They need the second (keyboard) channel. Wait for the startup delay,
+          or raise it under <em>Settings → Advanced → Camera channel startup
+          delay</em> if the link drops when the channel attaches.</p>
+        </details>
+        <details>
+          <summary>The app disconnects with the screen off</summary>
+          <p>Allow <em>Ignore battery optimisation</em> and keep the notification
+          enabled. Some phones (Samsung, Xiaomi) also need the app set to
+          “Unrestricted” battery use.</p>
+        </details>
+        <details>
+          <summary>No tyre pressure is shown</summary>
+          <p>The sensors only broadcast while the wheel moves or shortly after.
+          Ride a few metres and the reading appears.</p>
+        </details>
+      </div>
+
+      <p>Still stuck? <a href="https://github.com/githuba42r/MotoEyeRemote/issues">Open
+      an issue on GitHub</a>.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-row">
+    <span>MotoEye Remote — an independent project by <a href="https://www.a42r.com/">a42r</a>. MotoEye is a trademark of its owner.</span>
+    <nav aria-label="Footer">
+      <a href="/">App</a>
+      <a href="/privacy">Privacy</a>
+      <a href="https://github.com/githuba42r/MotoEyeRemote/releases/latest">Releases</a>
+      <a href="https://github.com/githuba42r/MotoEyeRemote">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
