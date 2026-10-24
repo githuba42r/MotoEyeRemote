@@ -270,12 +270,20 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             SectionTitle("Permissions & Services")
 
+            // Play policy: a prominent disclosure, accepted by the user, must come
+            // before the app sends them to enable an accessibility service.
+            var disclosure by remember { mutableStateOf<A11yDisclosure?>(null) }
+            val openAccessibilitySettings = {
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+
             LinkRow(
                 title = "Android Auto control",
                 subtitle = if (AutoControlService.isEnabled) "Enabled" else "Enable accessibility service",
                 accent = if (AutoControlService.isEnabled) Color(0xFF4CAF50) else Color(0xFFFF9800),
                 onClick = {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    if (AutoControlService.isEnabled) openAccessibilitySettings()
+                    else disclosure = A11yDisclosure.EXIT_ANDROID_AUTO
                 }
             )
 
@@ -284,9 +292,22 @@ fun SettingsScreen(onBack: () -> Unit) {
                 subtitle = if (LockControlService.isEnabled(context)) "Enabled" else "Enable accessibility service (for the lock-screen pad)",
                 accent = if (LockControlService.isEnabled(context)) Color(0xFF4CAF50) else Color(0xFFFF9800),
                 onClick = {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    if (LockControlService.isEnabled(context)) openAccessibilitySettings()
+                    else disclosure = A11yDisclosure.LOCK_SCREEN_PAD
                 }
             )
+
+            disclosure?.let { d ->
+                AccessibilityDisclosureDialog(
+                    disclosure = d,
+                    onAgree = {
+                        disclosure = null
+                        openAccessibilitySettings()
+                    },
+                    // Dismissing is not consent: nothing is opened.
+                    onDecline = { disclosure = null }
+                )
+            }
 
             LinkRow(
                 title = "Media controls",
@@ -476,6 +497,74 @@ private fun LinkRow(
         Text(text = "›", color = Color(0xFF757575), fontSize = 20.sp)
     }
     Spacer(Modifier.height(8.dp))
+}
+
+/** The two accessibility services, each with its own Play prominent disclosure. */
+private enum class A11yDisclosure(val title: String, val serviceName: String, val purpose: String) {
+    LOCK_SCREEN_PAD(
+        title = "Lock-screen pad uses an accessibility service",
+        serviceName = "MotoEye Remote — Lock screen pad",
+        purpose = "To show the D-pad, rear camera and BACK buttons above your lock screen, " +
+            "so you can control the HUD without unlocking your phone, MotoEye Remote uses " +
+            "Android's AccessibilityService API. The service only draws those buttons."
+    ),
+    EXIT_ANDROID_AUTO(
+        title = "Exit Android Auto uses an accessibility service",
+        serviceName = "MotoEye Remote — Android Auto / Exit AA",
+        purpose = "To leave Android Auto with one tap, MotoEye Remote uses Android's " +
+            "AccessibilityService API. The service only performs Android's Home action " +
+            "when you press the Exit AA button."
+    )
+}
+
+/**
+ * Prominent disclosure shown before sending the user to enable an accessibility
+ * service. Only "Agree" opens the system settings; "Not now", back and tapping
+ * outside all decline.
+ */
+@Composable
+private fun AccessibilityDisclosureDialog(
+    disclosure: A11yDisclosure,
+    onAgree: () -> Unit,
+    onDecline: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDecline) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1D1D1D))
+                .padding(20.dp)
+        ) {
+            Text(disclosure.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            Text(disclosure.purpose, color = Color(0xFFE0E0E0), fontSize = 14.sp)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "It cannot read what is on your screen, it ignores all accessibility " +
+                    "events, and it does not collect, store or share any data.",
+                color = Color(0xFFE0E0E0), fontSize = 14.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "If you agree, Android's accessibility settings open. Turn on " +
+                    "\"${disclosure.serviceName}\" there. You can turn it off at any time.",
+                color = Color(0xFF9E9E9E), fontSize = 13.sp
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text("Not now", color = Color(0xFF9E9E9E), fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDecline)
+                        .padding(10.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Agree", color = Color(0xFF2196F3), fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clickable(onClick = onAgree)
+                        .padding(10.dp))
+            }
+        }
+    }
 }
 
 /** Human labels for the key codes commonly used in HUD macros. */
