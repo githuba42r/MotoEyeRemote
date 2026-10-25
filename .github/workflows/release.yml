@@ -277,11 +277,11 @@ jobs:
       always() &&
       needs.plan.outputs.should_release == 'true' &&
       needs.plan.outputs.dry_run != 'true' &&
-      needs.release.result == 'success' &&
-      env.NOTIFY_ENABLED == 'true'
+      needs.release.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Send success email
+        if: env.NOTIFY_ENABLED == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_HOST }}
