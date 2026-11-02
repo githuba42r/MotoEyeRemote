@@ -112,16 +112,18 @@ object AppGraph {
                 }
             }
 
-            // App-level auto-connect fallback: if a saved HUD exists and the
-            // link is still down after the UI settles, connect regardless of
-            // which screen the user is on.
+            // App-level auto-connect fallback: if a saved HUD exists, its
+            // headset link is up (HUD powered on) and the BLE link is still
+            // down after the UI settles, connect regardless of the screen.
             appScope.launch {
                 val saved = com.motoeye.remote.data.SettingsRepository(appContext)
                     .pairedDeviceAddress()
                 if (saved != null) {
                     kotlinx.coroutines.delay(4000)
                     Log.i(TAG, "Auto-connect check: saved=$saved state=${connection.connectionState.value}")
-                    if (connection.connectionState.value == ConnectionState.DISCONNECTED) {
+                    if (connection.connectionState.value == ConnectionState.DISCONNECTED &&
+                        com.motoeye.remote.ble.HudLink.isUp(appContext)
+                    ) {
                         // connect through the foreground service so the status
                         // notification (and START_STICKY/wake-lock) always ride along
                         com.motoeye.remote.service.RemoteForegroundService.startConnect(appContext, saved)

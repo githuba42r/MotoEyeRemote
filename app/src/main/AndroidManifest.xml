@@ -95,6 +95,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Auto-connect when the HUD's headset (classic BT) link comes up -->
+        <receiver
+            android:name=".service.HudLinkReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Accessibility Service for Android Auto control -->
         <service
             android:name=".accessibility.AutoControlService"

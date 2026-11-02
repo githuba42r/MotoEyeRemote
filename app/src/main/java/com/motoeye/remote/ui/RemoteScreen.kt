@@ -107,6 +107,23 @@ fun RemoteScreen(
             }
         }
     }
+    // Link dropped and reconnecting: once the HUD's headset (classic BT) link
+    // is down too, the HUD is off — go back to the connection screen now
+    // instead of waiting out the presence watch. The reconnect carries on
+    // there, and that screen returns here when it succeeds.
+    if (connectionState != ConnectionState.CONNECTED &&
+        connectionState != ConnectionState.DISCONNECTED
+    ) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                if (!com.motoeye.remote.ble.HudLink.isUp(context)) {
+                    onOpenDeviceSelect()
+                    break
+                }
+                kotlinx.coroutines.delay(2000)
+            }
+        }
+    }
     val tpmsState by AppGraph.tpms.state.collectAsState()
     val mediaPlaying by AppGraph.media.isPlaying.collectAsState()
     var showTpms by remember { mutableStateOf(false) }

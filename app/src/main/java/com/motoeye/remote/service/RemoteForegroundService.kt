@@ -9,29 +9,35 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.motoeye.remote.AppGraph
 import com.motoeye.remote.R
 import com.motoeye.remote.RemoteApp
 import com.motoeye.remote.ble.ConnectionState
+import com.motoeye.remote.ble.HudLink
 import com.motoeye.remote.ble.Protocol
 import com.motoeye.remote.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
  * Foreground service keeping the BLE connection alive with a persistent
  * notification providing connection status and quick-action buttons.
+ * Runs only while connected or reconnecting: once the link is given up
+ * (DISCONNECTED) the service stops and releases its wake lock.
  */
 class RemoteForegroundService : android.app.Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var wakeLock: PowerManager.WakeLock? = null
     private var foregroundActive = false
+    private var observeJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -60,14 +66,16 @@ class RemoteForegroundService : android.app.Service() {
             else -> {
                 startAsForeground()
                 // Process restarted by the system (START_STICKY): revive the
-                // connection to the saved HUD — previously a process death
-                // silently ended auto-reconnect until the app was reopened.
+                // connection to the saved HUD, but only while its headset link
+                // is up — otherwise the HUD is off and there is nothing to do.
                 scope.launch {
                     kotlinx.coroutines.delay(3000)
                     val saved = com.motoeye.remote.data.SettingsRepository(this@RemoteForegroundService)
                         .pairedDeviceAddress()
                     val state = AppGraph.connection.connectionState.value
-                    if (saved != null && state == ConnectionState.DISCONNECTED) {
+                    if (saved != null && state == ConnectionState.DISCONNECTED &&
+                        HudLink.isUp(this@RemoteForegroundService)
+                    ) {
                         AppGraph.connection.connect(saved)
                     }
                 }
@@ -106,9 +114,18 @@ class RemoteForegroundService : android.app.Service() {
     }
 
     private fun observeConnection() {
-        scope.launch {
-            AppGraph.connection.connectionState.collect { state ->
+        if (observeJob?.isActive == true) return
+        observeJob = scope.launch {
+            AppGraph.connection.connectionState.collectLatest { state ->
                 updateNotification(state)
+                if (state == ConnectionState.DISCONNECTED) {
+                    // Grace period: a connect passes through DISCONNECTED
+                    // (bond check → connectGatt) and a restart waits 3s to
+                    // decide; only a link that stays down stops the service.
+                    kotlinx.coroutines.delay(STOP_GRACE_MS)
+                    Log.i(TAG, "Not connected — stopping the foreground service")
+                    stopSelf()
+                }
             }
         }
     }
@@ -206,16 +223,24 @@ class RemoteForegroundService : android.app.Service() {
         const val EXTRA_ADDRESS = "address"
         const val EXTRA_KEY_CODE = "keyCode"
         private const val NOTIFICATION_ID = 1001
+        private const val TAG = "RemoteFgService"
+        private const val STOP_GRACE_MS = 10_000L
 
         fun startConnect(context: Context, address: String) {
             val intent = Intent(context, RemoteForegroundService::class.java).apply {
                 action = ACTION_CONNECT
                 putExtra(EXTRA_ADDRESS, address)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                // Android 12+ refuses background FGS starts unless the app is
+                // exempt (e.g. battery optimisation off) — don't crash a receiver
+                Log.e(TAG, "foreground service start refused: ${e.message}")
             }
         }
 

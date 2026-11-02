@@ -26,6 +26,7 @@ import android.view.HapticFeedbackConstants
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.motoeye.remote.AppGraph
+import com.motoeye.remote.ble.ConnectionState
 import com.motoeye.remote.ble.Protocol
 import com.motoeye.remote.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -39,8 +40,8 @@ import kotlin.math.roundToInt
  * Lock-screen remote: an accessibility overlay (TYPE_ACCESSIBILITY_OVERLAY,
  * the only trusted window kind that can sit above the keyguard) with the
  * D-pad, the rear-view camera button and BACK — enough to operate the HUD
- * without unlocking the phone. Visible only while the keyguard is up AND the
- * user enables "Lock screen controls" in Settings.
+ * without unlocking the phone. Visible only while the keyguard is up, the HUD
+ * is connected AND the user enables "Lock screen controls" in Settings.
  */
 class LockControlService : AccessibilityService() {
 
@@ -55,6 +56,10 @@ class LockControlService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        // The system can rebind this service in a fresh process (after a
+        // reboot, or once the app process was killed) before the UI or the
+        // foreground service ever ran, so set the shared managers up here.
+        AppGraph.init(this)
         Log.i(TAG, "Lock-screen pad service connected")
 
         val filter = IntentFilter().apply {
@@ -75,6 +80,12 @@ class LockControlService : AccessibilityService() {
                 main.post { syncOverlay() }
             }
         }
+        // Show/hide the pad as the HUD link comes and goes
+        scope.launch {
+            AppGraph.connection.connectionState.collect {
+                main.post { syncOverlay() }
+            }
+        }
         main.post { syncOverlay() }
     }
 
@@ -88,7 +99,7 @@ class LockControlService : AccessibilityService() {
         (getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
 
     private fun ready(): Boolean = try {
-        AppGraph.connection != null && AppGraph.phoneHid != null
+        AppGraph.connection.connectionState.value == ConnectionState.CONNECTED
     } catch (e: Exception) {
         false
     }
@@ -112,7 +123,7 @@ class LockControlService : AccessibilityService() {
             cornerRadius = dp(radiusDp).toFloat()
         }
 
-    private fun keyButton(label: String, sizeDp: Int, textSize: Float = 13f): TextView =
+    private fun keyButton(label: String, sizeDp: Int, textSize: Float = 16f): TextView =
         TextView(this).apply {
             text = label
             gravity = Gravity.CENTER
@@ -247,24 +258,26 @@ class LockControlService : AccessibilityService() {
         val screenW = dm.widthPixels
         val screenH = dm.heightPixels
 
-        // D-pad cluster centred on screen (184dp wide, 192dp tall grid)
-        val clusterLeft = (screenW - dp(184)) / 2
-        val clusterTop = (screenH - dp(192)) / 2
-        fun addClustered(view: View, relX: Int, relY: Int) =
-            addWindow(view, clusterLeft + dp(relX), clusterTop + dp(relY), 56)
+        // D-pad cluster centred on screen: 3x3 grid of DPAD buttons, GAP apart
+        val pitch = DPAD + GAP
+        val cluster = 3 * DPAD + 2 * GAP
+        val clusterLeft = (screenW - dp(cluster)) / 2
+        val clusterTop = (screenH - dp(cluster)) / 2
+        fun addClustered(view: View, col: Int, row: Int) =
+            addWindow(view, clusterLeft + dp(col * pitch), clusterTop + dp(row * pitch), DPAD)
 
         // D-pad
-        addClustered(holdKey("▲", 0xFF0F3460.toInt(), 56, 0x52, Protocol.Keys.DPAD_UP), 64, 0)
-        addClustered(holdKey("◀", 0xFF0F3460.toInt(), 56, 0x50, Protocol.Keys.DPAD_LEFT), 0, 68)
-        addClustered(holdKey("OK", 0xFF1B5E20.toInt(), 56, 0x28, Protocol.Keys.ENTER), 64, 68)
-        addClustered(holdKey("▶", 0xFF0F3460.toInt(), 56, 0x4F, Protocol.Keys.DPAD_RIGHT), 128, 68)
-        addClustered(holdKey("▼", 0xFF0F3460.toInt(), 56, 0x51, Protocol.Keys.DPAD_DOWN), 64, 136)
+        addClustered(holdKey("▲", 0xFF0F3460.toInt(), DPAD, 0x52, Protocol.Keys.DPAD_UP), 1, 0)
+        addClustered(holdKey("◀", 0xFF0F3460.toInt(), DPAD, 0x50, Protocol.Keys.DPAD_LEFT), 0, 1)
+        addClustered(holdKey("OK", 0xFF1B5E20.toInt(), DPAD, 0x28, Protocol.Keys.ENTER), 1, 1)
+        addClustered(holdKey("▶", 0xFF0F3460.toInt(), DPAD, 0x4F, Protocol.Keys.DPAD_RIGHT), 2, 1)
+        addClustered(holdKey("▼", 0xFF0F3460.toInt(), DPAD, 0x51, Protocol.Keys.DPAD_DOWN), 1, 2)
 
-        // Big (2x) CAM and BACK below the D-pad, pushed to the screen edges
-        val bigY = clusterTop + dp(192) + dp(14)
+        // Big CAM and BACK below the D-pad, pushed to the screen edges
+        val bigY = clusterTop + dp(cluster) + dp(14)
         val margin = 18
-        addWindow(camButton(112), dp(margin), bigY, 112)
-        addWindow(backButton(112), screenW - dp(margin) - dp(112), bigY, 112)
+        addWindow(camButton(BIG), dp(margin), bigY, BIG)
+        addWindow(backButton(BIG), screenW - dp(margin) - dp(BIG), bigY, BIG)
 
         Log.i(TAG, "Lock-screen pad shown (${overlayViews.size} windows)")
     }
@@ -283,7 +296,10 @@ class LockControlService : AccessibilityService() {
         Log.i(TAG, "Lock-screen pad hidden")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    /** Keyguard show/hide raises window-state events — re-check on each. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) syncOverlay()
+    }
 
     override fun onInterrupt() {}
 
@@ -296,6 +312,11 @@ class LockControlService : AccessibilityService() {
     }
 
     companion object {
+        /** Lock-screen pad sizes (dp): D-pad button, gap between them, CAM/BACK */
+        private const val DPAD = 72
+        private const val GAP = 18
+        private const val BIG = 100
+
         @Volatile
         var instance: LockControlService? = null
             private set

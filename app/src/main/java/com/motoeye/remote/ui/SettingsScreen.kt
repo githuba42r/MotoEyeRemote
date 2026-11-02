@@ -119,6 +119,13 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
 
             ToggleRow(
+                title = "Reconnect needs HUD Bluetooth",
+                subtitle = "Only allow Reconnect while the HUD is connected to the phone's Bluetooth (automatic connects always wait for it)",
+                checked = s?.requireHudLinkForConnect ?: false,
+                onCheckedChange = { scope.launch { settings.setRequireHudLinkForConnect(it) } }
+            )
+
+            ToggleRow(
                 title = "Keep awake (wake lock)",
                 subtitle = "Prevent sleep while connected",
                 checked = s?.wakeLockEnabled ?: true,

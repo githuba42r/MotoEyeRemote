@@ -123,9 +123,11 @@ fun DeviceSelectScreen(
         }
     }
 
-    // Auto-connect to saved device once
+    // Auto-connect to saved device once, if the HUD's headset link is up
     LaunchedEffect(savedAddress) {
-        if (savedAddress != null && connectionState == ConnectionState.DISCONNECTED) {
+        if (savedAddress != null && connectionState == ConnectionState.DISCONNECTED &&
+            com.motoeye.remote.ble.HudLink.isUp(context)
+        ) {
             RemoteForegroundService.startConnect(context, savedAddress!!)
         }
     }
@@ -194,7 +196,19 @@ fun DeviceSelectScreen(
             Spacer(Modifier.height(12.dp))
             Button(onClick = {
                 ensurePermissions {
-                    RemoteForegroundService.startConnect(context, savedAddress!!)
+                    scope.launch {
+                        val gated = settings.requireHudLinkForConnect() &&
+                            !com.motoeye.remote.ble.HudLink.isUp(context)
+                        if (gated) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "The HUD isn't connected to this phone's Bluetooth — switch it on first",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            RemoteForegroundService.startConnect(context, savedAddress!!)
+                        }
+                    }
                 }
             }) {
                 Text("Reconnect")

@@ -45,6 +45,7 @@ data class DeviceStatus(
 class BleConnectionManager(private val context: Context) {
 
     private val TAG = "BleConnectionManager"
+    private val ATTEMPT_TIMEOUT_MS = 10_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -82,6 +83,9 @@ class BleConnectionManager(private val context: Context) {
         isReconnecting = false
         reconnectScheduled = false
         stopWatch()
+        // Drop any pending attempt — a fresh connect() replaces it
+        cleanupGatt()
+        _connectionState.value = ConnectionState.DISCONNECTED
         ensureBondThenConnect(address)
     }
 
@@ -584,23 +588,7 @@ class BleConnectionManager(private val context: Context) {
                 delay(1000)
                 Log.i(TAG, "Reconnect attempt $reconnectAttempt (direct)")
                 savedAddress?.let { doConnect(it, autoConnect = true) }
-                scope.launch {
-                    var waited = 0
-                    while (waited < 8000 &&
-                        (_connectionState.value == ConnectionState.CONNECTING ||
-                         _connectionState.value == ConnectionState.DISCOVERING)
-                    ) {
-                        delay(500); waited += 500
-                    }
-                    if (_connectionState.value == ConnectionState.CONNECTING ||
-                        _connectionState.value == ConnectionState.DISCOVERING
-                    ) {
-                        Log.w(TAG, "Direct attempt unresolved after 8s — falling back to presence watch")
-                        cleanupGatt()
-                        _connectionState.value = ConnectionState.DISCONNECTED
-                        scheduleReconnect()
-                    }
-                }
+                watchAttempt("Direct attempt")
             } else if (presenceJob?.isActive != true) {
                 Log.i(TAG, "Reconnect attempt $reconnectAttempt (presence watch)")
                 startPresenceWatch()
@@ -636,8 +624,11 @@ class BleConnectionManager(private val context: Context) {
                 val visible = presenceCheck()
                 if (visible) {
                     Log.i(TAG, "Registered HUD visible — attaching")
-                    _connectionState.value = ConnectionState.CONNECTING
-                    doConnect(savedAddress!!, autoConnect = true)
+                    // direct (autoConnect=false) attach: the HUD was just seen
+                    // advertising, and a direct connect reports success or
+                    // failure instead of pending silently
+                    doConnect(savedAddress!!, autoConnect = false)
+                    watchAttempt("Presence attach")
                     return@launch
                 }
                 delay(intervalMs)
@@ -645,6 +636,31 @@ class BleConnectionManager(private val context: Context) {
             }
         }
     }
+
+    /**
+     * Watchdog for one connect attempt: a GATT connect against a HUD that
+     * isn't answering can stay pending with NO callback forever, which would
+     * leave the app stuck on "Connecting". After [ATTEMPT_TIMEOUT_MS] the
+     * attempt is dropped and the reconnect cycle carries on (presence watch).
+     */
+    private fun watchAttempt(label: String) {
+        scope.launch {
+            var waited = 0L
+            while (waited < ATTEMPT_TIMEOUT_MS && attemptPending()) {
+                delay(500); waited += 500
+            }
+            if (attemptPending()) {
+                Log.w(TAG, "$label unresolved after ${ATTEMPT_TIMEOUT_MS / 1000}s — back to the presence watch")
+                cleanupGatt()
+                _connectionState.value = ConnectionState.DISCONNECTED
+                scheduleReconnect()
+            }
+        }
+    }
+
+    private fun attemptPending(): Boolean =
+        _connectionState.value == ConnectionState.CONNECTING ||
+            _connectionState.value == ConnectionState.DISCOVERING
 
     /** One bounded presence check: bond-state + short filtered scan burst */
     private suspend fun presenceCheck(): Boolean {

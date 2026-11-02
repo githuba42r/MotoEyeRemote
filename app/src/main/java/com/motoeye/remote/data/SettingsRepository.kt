@@ -27,6 +27,7 @@ data class AppSettings(
     val hidAttachDelaySeconds: Int,  // wait after BLE link-up before stating the HID keyboard channel
     val protocolClickMode: Boolean,  // force JSON click protocol instead of HID
     val showLockScreenControls: Boolean, // keyguard overlay: D-pad, rear camera, back
+    val requireHudLinkForConnect: Boolean, // manual Reconnect also needs the HUD's headset link up
 )
 
 class SettingsRepository(private val context: Context) {
@@ -47,6 +48,7 @@ class SettingsRepository(private val context: Context) {
         val HID_DELAY = intPreferencesKey("hid_attach_delay_seconds")
         val CLICK_MODE = booleanPreferencesKey("click_mode")
         val LOCK_SCREEN = booleanPreferencesKey("lock_screen_controls")
+        val REQUIRE_HUD_LINK = booleanPreferencesKey("require_hud_link_for_connect")
         val DELETED_BUILTINS = stringSetPreferencesKey("deleted_builtin_macros")
     }
 
@@ -65,10 +67,12 @@ class SettingsRepository(private val context: Context) {
             hidAttachDelaySeconds = p[Keys.HID_DELAY] ?: 5,
             protocolClickMode = p[Keys.CLICK_MODE] ?: false,
             showLockScreenControls = p[Keys.LOCK_SCREEN] ?: false,
+            requireHudLinkForConnect = p[Keys.REQUIRE_HUD_LINK] ?: false,
         )
     }
 
     suspend fun pairedDeviceAddress(): String? = ds.data.first()[Keys.PAIRED_ADDRESS]
+    suspend fun pairedDeviceName(): String? = ds.data.first()[Keys.PAIRED_NAME]
     val pairedDeviceAddressFlow: Flow<String?> = ds.data.map { it[Keys.PAIRED_ADDRESS] }
 
     suspend fun autoReconnect(): Boolean = ds.data.first()[Keys.AUTO_RECONNECT] ?: true
@@ -101,6 +105,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHidAttachDelaySeconds(v: Int) = ds.edit { it[Keys.HID_DELAY] = v }
     suspend fun setClickMode(enabled: Boolean) = ds.edit { it[Keys.CLICK_MODE] = enabled }
     suspend fun setShowLockScreenControls(enabled: Boolean) = ds.edit { it[Keys.LOCK_SCREEN] = enabled }
+    suspend fun requireHudLinkForConnect(): Boolean = ds.data.first()[Keys.REQUIRE_HUD_LINK] ?: false
+    suspend fun setRequireHudLinkForConnect(enabled: Boolean) = ds.edit { it[Keys.REQUIRE_HUD_LINK] = enabled }
 
     /** Names of seeded builtin macros the user deleted — they must never be
      *  re-seeded (only install-time examples, not persistent fixtures). */
