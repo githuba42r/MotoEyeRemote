@@ -30,6 +30,10 @@ val releaseVersionName = if (versionPropsFile.isFile) {
 } else {
     "0.5.8" // fallback: last hardcoded versionName
 }
+// Release-candidate installs from non-main branches (scripts/install-rc.sh)
+// pass the RC version on the command line; version.properties stays as main.
+val appVersionCode = (findProperty("versionCodeOverride") as String?)?.toInt() ?: releaseVersionCode
+val appVersionName = (findProperty("versionNameOverride") as String?) ?: releaseVersionName
 
 // CI keystore: the workflow exports these env vars when a release keystore
 // secret is present; without them the release build stays unsigned.
@@ -51,8 +55,8 @@ android {
         applicationId = "com.a42r.motoeye.remote"
         minSdk = 26
         targetSdk = 36
-        versionCode = releaseVersionCode
-        versionName = releaseVersionName
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     signingConfigs {
