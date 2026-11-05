@@ -67,6 +67,14 @@ class BleConnectionManager(private val context: Context) {
     val lastMessage: StateFlow<String?> = _lastMessage.asStateFlow()
 
     private var savedAddress: String? = null
+
+    /**
+     * Set when the user explicitly disconnects (modal / notification action).
+     * Suppresses the passive auto-connect paths (device-select auto-connect,
+     * FGS revive) for the rest of the session; cleared by the next connect()
+     * so an explicit Reconnect re-arms them.
+     */
+    @Volatile var userDisconnected: Boolean = false
     private var reconnectAttempt = 0
     private var isReconnecting = false
     private var isHandshakeDone = false
@@ -79,6 +87,7 @@ class BleConnectionManager(private val context: Context) {
     fun connect(address: String) {
         Log.i(TAG, "connect() requested for $address")
         savedAddress = address
+        userDisconnected = false
         reconnectAttempt = 0
         isReconnecting = false
         reconnectScheduled = false
@@ -727,6 +736,7 @@ class BleConnectionManager(private val context: Context) {
     }
 
     fun disconnect() {
+        userDisconnected = true
         isReconnecting = false
         reconnectScheduled = false
         stopWatch()

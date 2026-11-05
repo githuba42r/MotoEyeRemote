@@ -54,6 +54,10 @@ class RemoteForegroundService : android.app.Service() {
             }
             ACTION_DISCONNECT -> {
                 AppGraph.connection.disconnect()
+                // disconnect() doesn't fire onDisconnected — stop the HID
+                // retry loop explicitly or the phone keeps trying to attach
+                // as a keyboard after the user walked away
+                AppGraph.phoneHid.stopTrying()
                 stopSelf()
             }
             ACTION_KEY -> {
@@ -74,6 +78,7 @@ class RemoteForegroundService : android.app.Service() {
                         .pairedDeviceAddress()
                     val state = AppGraph.connection.connectionState.value
                     if (saved != null && state == ConnectionState.DISCONNECTED &&
+                        !AppGraph.connection.userDisconnected &&
                         HudLink.isUp(this@RemoteForegroundService)
                     ) {
                         AppGraph.connection.connect(saved)

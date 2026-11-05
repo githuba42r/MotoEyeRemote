@@ -1,6 +1,9 @@
 package com.motoeye.remote.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,8 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.TireRepair
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,11 +77,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.motoeye.remote.AppGraph
 import com.motoeye.remote.ble.ConnectionState
 import com.motoeye.remote.ble.Protocol
 import com.motoeye.remote.accessibility.AutoControlService
 import com.motoeye.remote.tpms.TpmsManager
+import kotlinx.coroutines.launch
 
 private val ButtonBg = Color(0xFF2A2A2A)
 private val ButtonPressed = Color(0xFF404040)
@@ -128,12 +135,16 @@ fun RemoteScreen(
     val mediaPlaying by AppGraph.media.isPlaying.collectAsState()
     var showTpms by remember { mutableStateOf(false) }
     var showMacroSheet by remember { mutableStateOf(false) }
+    var showDisconnectDialog by remember { mutableStateOf(false) }
 
     // HID channel readiness (camera/record live only when attached)
     val hidReady by AppGraph.phoneHid.isAttached.collectAsState()
 
     // Settings-driven behavior
     val settings = remember { com.motoeye.remote.data.SettingsRepository(context) }
+    val scope = rememberCoroutineScope()
+    var deviceName by remember { mutableStateOf<String?>(null) }
+    var autoReconnectOn by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
     var showTpmsButton by remember { mutableStateOf(true) }
     var showRecordButton by remember { mutableStateOf(true) }
@@ -146,6 +157,8 @@ fun RemoteScreen(
             vibrationEnabled = it.vibrationEnabled
             showTpmsButton = it.showTpms
             showRecordButton = it.showRecordButton
+            deviceName = it.pairedDeviceName
+            autoReconnectOn = it.autoReconnect
         }
     }
     var isRecording by remember { mutableStateOf(false) }
@@ -196,7 +209,11 @@ fun RemoteScreen(
             tpmsActive = tpmsState.isActive,
             hudBattery = deviceStatus.batteryLevel,
             onSettings = onOpenSettings,
-            onDevice = onOpenDeviceSelect
+            onDevice = onOpenDeviceSelect,
+            onDisconnect = {
+                pressHaptic(true)
+                showDisconnectDialog = true
+            }
         )
 
         // Main control area — corner shortcuts + centered D-pad + BACK
@@ -395,6 +412,21 @@ fun RemoteScreen(
     if (showTpms) {
         TpmsOverlay(state = tpmsState, onClose = { showTpms = false })
     }
+
+    // Disconnect modal (long-press the status cluster)
+    if (showDisconnectDialog) {
+        DisconnectDialog(
+            connectionState = connectionState,
+            deviceName = deviceName,
+            autoReconnect = autoReconnectOn,
+            onDisconnect = { reconnect ->
+                showDisconnectDialog = false
+                scope.launch { settings.setAutoReconnect(reconnect) }
+                com.motoeye.remote.service.RemoteForegroundService.disconnect(context)
+            },
+            onDismiss = { showDisconnectDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -518,23 +550,28 @@ private fun RecordButton(
 }
 
 
+private fun connectionStatusText(state: ConnectionState): String = when (state) {
+    ConnectionState.CONNECTED -> "Connected"
+    ConnectionState.CONNECTING,
+    ConnectionState.DISCOVERING,
+    ConnectionState.HANDSHAKING -> "Connecting…"
+    ConnectionState.RECONNECTING -> "Reconnecting…"
+    ConnectionState.SCANNING -> "Scanning…"
+    ConnectionState.DISCONNECTED -> "Disconnected"
+}
+
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StatusBar(
     connectionState: ConnectionState,
     tpmsActive: Boolean,
     hudBattery: Int = -1,
     onSettings: () -> Unit,
-    onDevice: () -> Unit
+    onDevice: () -> Unit,
+    onDisconnect: () -> Unit
 ) {
-    val statusText = when (connectionState) {
-        ConnectionState.CONNECTED -> "Connected"
-        ConnectionState.CONNECTING,
-        ConnectionState.DISCOVERING,
-        ConnectionState.HANDSHAKING -> "Connecting…"
-        ConnectionState.RECONNECTING -> "Reconnecting…"
-        ConnectionState.SCANNING -> "Scanning…"
-        ConnectionState.DISCONNECTED -> "Disconnected"
-    }
+    val statusText = connectionStatusText(connectionState)
     val statusColor = if (connectionState == ConnectionState.CONNECTED) ConnectedGreen else DisconnectedRed
 
     Row(
@@ -548,7 +585,7 @@ private fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .clickable(onClick = onDevice)
+                .combinedClickable(onClick = onDevice, onLongClick = onDisconnect)
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             Box(
@@ -592,6 +629,92 @@ private fun StatusBar(
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color(0xFFE0E0E0))
+            }
+        }
+    }
+}
+
+
+/**
+ * Long-press modal on the status cluster: drop the BLE link now and
+ * optionally turn auto-reconnect off. The switch is local — committed only
+ * on Disconnect, so Cancel never changes the setting.
+ */
+@Composable
+private fun DisconnectDialog(
+    connectionState: ConnectionState,
+    deviceName: String?,
+    autoReconnect: Boolean,
+    onDisconnect: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var reconnect by remember(autoReconnect) { mutableStateOf(autoReconnect) }
+    val disconnectEnabled = connectionState != ConnectionState.DISCONNECTED
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1D1D1D))
+                .padding(20.dp)
+        ) {
+            Text(
+                text = "Connection",
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "${deviceName ?: "HUD"} — ${connectionStatusText(connectionState)}",
+                color = Color(0xFF9E9E9E),
+                fontSize = 14.sp
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto reconnect", color = Color.White, fontSize = 15.sp)
+                    Text(
+                        "Reconnect when the HUD comes back",
+                        color = Color(0xFF9E9E9E),
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(checked = reconnect, onCheckedChange = { reconnect = it })
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    text = "Cancel",
+                    color = Color(0xFF9E9E9E),
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDismiss)
+                        .padding(10.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Disconnect",
+                    color = if (disconnectEnabled) DisconnectedRed else Color(0xFF616161),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .then(
+                            if (disconnectEnabled) {
+                                Modifier.clickable { onDisconnect(reconnect) }
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .padding(10.dp)
+                )
             }
         }
     }

@@ -123,9 +123,12 @@ fun DeviceSelectScreen(
         }
     }
 
-    // Auto-connect to saved device once, if the HUD's headset link is up
+    // Auto-connect to saved device once, if the HUD's headset link is up.
+    // Skipped after a user-initiated disconnect — that must stick until an
+    // explicit Reconnect, or the disconnect bounces straight back.
     LaunchedEffect(savedAddress) {
         if (savedAddress != null && connectionState == ConnectionState.DISCONNECTED &&
+            !com.motoeye.remote.AppGraph.connection.userDisconnected &&
             com.motoeye.remote.ble.HudLink.isUp(context)
         ) {
             RemoteForegroundService.startConnect(context, savedAddress!!)
