@@ -40,8 +40,9 @@ import kotlin.math.roundToInt
  * Lock-screen remote: an accessibility overlay (TYPE_ACCESSIBILITY_OVERLAY,
  * the only trusted window kind that can sit above the keyguard) with the
  * D-pad, the rear-view camera button and BACK — enough to operate the HUD
- * without unlocking the phone. Visible only while the keyguard is up, the HUD
- * is connected AND the user enables "Lock screen controls" in Settings.
+ * without unlocking the phone — plus, optionally, a media row (prev /
+ * play-pause / next) above the D-pad. Visible only while the keyguard is up,
+ * the HUD is connected AND the user enables "Lock screen controls" in Settings.
  */
 class LockControlService : AccessibilityService() {
 
@@ -50,6 +51,8 @@ class LockControlService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
 
     private var overlayEnabled = false
+    private var mediaEnabled = false
+    private var playPauseView: TextView? = null
 
     private val settings by lazy { SettingsRepository(this) }
 
@@ -77,13 +80,24 @@ class LockControlService : AccessibilityService() {
         scope.launch {
             settings.settings.collect {
                 overlayEnabled = it.showLockScreenControls
-                main.post { syncOverlay() }
+                val mediaChanged = it.showLockScreenMedia != mediaEnabled
+                mediaEnabled = it.showLockScreenMedia
+                main.post {
+                    // Rebuild a visible pad so the media row appears/disappears
+                    if (mediaChanged) detachOverlay()
+                    syncOverlay()
+                }
             }
         }
         // Show/hide the pad as the HUD link comes and goes
         scope.launch {
             AppGraph.connection.connectionState.collect {
                 main.post { syncOverlay() }
+            }
+        }
+        scope.launch {
+            AppGraph.media.isPlaying.collect { playing ->
+                main.post { playPauseView?.text = playPauseLabel(playing) }
             }
         }
         main.post { syncOverlay() }
@@ -205,6 +219,28 @@ class LockControlService : AccessibilityService() {
         return tv
     }
 
+    private fun playPauseLabel(playing: Boolean) = if (playing) "❚❚" else "▶"
+
+    /** Media transport button: a click on the phone's player, no HUD link involved. */
+    private fun mediaButton(label: String, sizeDp: Int, action: () -> Unit): TextView {
+        val radius = sizeDp / 2
+        val tv = keyButton(label, sizeDp, textSize = 20f)
+        tv.background = buttonBg(0xFF4A2A6A.toInt(), false, radius)
+        tv.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> view.background = buttonBg(0xFF4A2A6A.toInt(), true, radius)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    view.background = buttonBg(0xFF4A2A6A.toInt(), false, radius)
+            }
+            false   // let the click listener fire
+        }
+        tv.setOnClickListener { v ->
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            action()
+        }
+        return tv
+    }
+
     private fun press(hidUsage: Int, keyCode: Int, down: Boolean) {
         if (!ready()) return
         AppGraph.sendReflectiveKey(hidUsage, keyCode, down)
@@ -258,26 +294,55 @@ class LockControlService : AccessibilityService() {
         val screenW = dm.widthPixels
         val screenH = dm.heightPixels
 
-        // D-pad cluster centred on screen: 3x3 grid of DPAD buttons, GAP apart
-        val pitch = DPAD + GAP
-        val cluster = 3 * DPAD + 2 * GAP
+        // With the media row the whole pad shrinks so the extra row fits below
+        // the lock-screen clock/widgets; the pad's bottom edge stays put.
+        val scale = if (mediaEnabled) MEDIA_SCALE else 1f
+        fun sc(v: Int) = (v * scale).roundToInt()
+        val dpad = sc(DPAD)
+        val gap = sc(GAP)
+        val big = sc(BIG)
+        val bigGap = sc(BIG_GAP)
+        val media = sc(MEDIA)
+
+        // D-pad cluster: 3x3 grid of dpad buttons, gap apart, centred
+        // horizontally (and vertically for the full-size pad)
+        val pitch = dpad + gap
+        val cluster = 3 * dpad + 2 * gap
         val clusterLeft = (screenW - dp(cluster)) / 2
-        val clusterTop = (screenH - dp(cluster)) / 2
+        val fullBottom = (screenH + dp(3 * DPAD + 2 * GAP)) / 2 + dp(BIG_GAP) + dp(BIG)
+        val clusterTop =
+            if (mediaEnabled) fullBottom - dp(big) - dp(bigGap) - dp(cluster)
+            else (screenH - dp(cluster)) / 2
         fun addClustered(view: View, col: Int, row: Int) =
-            addWindow(view, clusterLeft + dp(col * pitch), clusterTop + dp(row * pitch), DPAD)
+            addWindow(view, clusterLeft + dp(col * pitch), clusterTop + dp(row * pitch), dpad)
 
         // D-pad
-        addClustered(holdKey("▲", 0xFF0F3460.toInt(), DPAD, 0x52, Protocol.Keys.DPAD_UP), 1, 0)
-        addClustered(holdKey("◀", 0xFF0F3460.toInt(), DPAD, 0x50, Protocol.Keys.DPAD_LEFT), 0, 1)
-        addClustered(holdKey("OK", 0xFF1B5E20.toInt(), DPAD, 0x28, Protocol.Keys.ENTER), 1, 1)
-        addClustered(holdKey("▶", 0xFF0F3460.toInt(), DPAD, 0x4F, Protocol.Keys.DPAD_RIGHT), 2, 1)
-        addClustered(holdKey("▼", 0xFF0F3460.toInt(), DPAD, 0x51, Protocol.Keys.DPAD_DOWN), 1, 2)
+        addClustered(holdKey("▲", 0xFF0F3460.toInt(), dpad, 0x52, Protocol.Keys.DPAD_UP), 1, 0)
+        addClustered(holdKey("◀", 0xFF0F3460.toInt(), dpad, 0x50, Protocol.Keys.DPAD_LEFT), 0, 1)
+        addClustered(holdKey("OK", 0xFF1B5E20.toInt(), dpad, 0x28, Protocol.Keys.ENTER), 1, 1)
+        addClustered(holdKey("▶", 0xFF0F3460.toInt(), dpad, 0x4F, Protocol.Keys.DPAD_RIGHT), 2, 1)
+        addClustered(holdKey("▼", 0xFF0F3460.toInt(), dpad, 0x51, Protocol.Keys.DPAD_DOWN), 1, 2)
+
+        // Optional media row above the D-pad, spaced like the D-pad columns
+        if (mediaEnabled) {
+            val mediaY = clusterTop - dp(gap) - dp(media)
+            fun addMedia(view: View, col: Int) = addWindow(
+                view, clusterLeft + dp(col * pitch) + (dp(dpad) - dp(media)) / 2, mediaY, media
+            )
+            addMedia(mediaButton("⏮", media) { AppGraph.media.previous() }, 0)
+            val playPause = mediaButton(playPauseLabel(AppGraph.media.isPlaying.value), media) {
+                AppGraph.media.playPause()
+            }
+            playPauseView = playPause
+            addMedia(playPause, 1)
+            addMedia(mediaButton("⏭", media) { AppGraph.media.next() }, 2)
+        }
 
         // Big CAM and BACK below the D-pad, pushed to the screen edges
-        val bigY = clusterTop + dp(cluster) + dp(14)
+        val bigY = clusterTop + dp(cluster) + dp(bigGap)
         val margin = 18
-        addWindow(camButton(BIG), dp(margin), bigY, BIG)
-        addWindow(backButton(BIG), screenW - dp(margin) - dp(BIG), bigY, BIG)
+        addWindow(camButton(big), dp(margin), bigY, big)
+        addWindow(backButton(big), screenW - dp(margin) - dp(big), bigY, big)
 
         Log.i(TAG, "Lock-screen pad shown (${overlayViews.size} windows)")
     }
@@ -293,6 +358,7 @@ class LockControlService : AccessibilityService() {
             }
         }
         overlayViews.clear()
+        playPauseView = null
         Log.i(TAG, "Lock-screen pad hidden")
     }
 
@@ -312,10 +378,15 @@ class LockControlService : AccessibilityService() {
     }
 
     companion object {
-        /** Lock-screen pad sizes (dp): D-pad button, gap between them, CAM/BACK */
+        /** Lock-screen pad sizes (dp): D-pad button, gap between them, CAM/BACK,
+         *  D-pad-to-CAM/BACK gap, media row */
         private const val DPAD = 72
         private const val GAP = 18
         private const val BIG = 100
+        private const val BIG_GAP = 14
+        private const val MEDIA = 64
+        /** Whole-pad scale while the media row is shown (fits below the clock widgets) */
+        private const val MEDIA_SCALE = 0.78f
 
         @Volatile
         var instance: LockControlService? = null
