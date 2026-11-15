@@ -28,6 +28,8 @@ data class AppSettings(
     val protocolClickMode: Boolean,  // force JSON click protocol instead of HID
     val showLockScreenControls: Boolean, // keyguard overlay: D-pad, rear camera, back
     val requireHudLinkForConnect: Boolean, // manual Reconnect also needs the HUD's headset link up
+    val showLockScreenMedia: Boolean,    // lock-screen pad also gets prev / play-pause / next
+    val defaultPlayerPackage: String?,   // started by PLAY when no media session exists
 )
 
 class SettingsRepository(private val context: Context) {
@@ -49,6 +51,8 @@ class SettingsRepository(private val context: Context) {
         val CLICK_MODE = booleanPreferencesKey("click_mode")
         val LOCK_SCREEN = booleanPreferencesKey("lock_screen_controls")
         val REQUIRE_HUD_LINK = booleanPreferencesKey("require_hud_link_for_connect")
+        val LOCK_SCREEN_MEDIA = booleanPreferencesKey("lock_screen_media")
+        val DEFAULT_PLAYER = stringPreferencesKey("default_player")
         val DELETED_BUILTINS = stringSetPreferencesKey("deleted_builtin_macros")
     }
 
@@ -68,6 +72,8 @@ class SettingsRepository(private val context: Context) {
             protocolClickMode = p[Keys.CLICK_MODE] ?: false,
             showLockScreenControls = p[Keys.LOCK_SCREEN] ?: false,
             requireHudLinkForConnect = p[Keys.REQUIRE_HUD_LINK] ?: false,
+            showLockScreenMedia = p[Keys.LOCK_SCREEN_MEDIA] ?: false,
+            defaultPlayerPackage = p[Keys.DEFAULT_PLAYER],
         )
     }
 
@@ -107,6 +113,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setShowLockScreenControls(enabled: Boolean) = ds.edit { it[Keys.LOCK_SCREEN] = enabled }
     suspend fun requireHudLinkForConnect(): Boolean = ds.data.first()[Keys.REQUIRE_HUD_LINK] ?: false
     suspend fun setRequireHudLinkForConnect(enabled: Boolean) = ds.edit { it[Keys.REQUIRE_HUD_LINK] = enabled }
+    suspend fun setShowLockScreenMedia(enabled: Boolean) = ds.edit { it[Keys.LOCK_SCREEN_MEDIA] = enabled }
+    suspend fun setDefaultPlayer(pkg: String?) = ds.edit {
+        if (pkg == null) it.remove(Keys.DEFAULT_PLAYER) else it[Keys.DEFAULT_PLAYER] = pkg
+    }
 
     /** Names of seeded builtin macros the user deleted — they must never be
      *  re-seeded (only install-time examples, not persistent fixtures). */

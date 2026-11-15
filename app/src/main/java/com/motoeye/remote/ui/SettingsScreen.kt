@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -155,6 +156,33 @@ fun SettingsScreen(onBack: () -> Unit) {
                 checked = s?.showLockScreenControls ?: false,
                 onCheckedChange = { scope.launch { settings.setShowLockScreenControls(it) } }
             )
+
+            ToggleRow(
+                title = "Lock screen media controls",
+                subtitle = "Add previous / play-pause / next above the lock-screen D-pad (needs Lock screen controls on and notification access)",
+                checked = s?.showLockScreenMedia ?: false,
+                onCheckedChange = { scope.launch { settings.setShowLockScreenMedia(it) } }
+            )
+
+            var showPlayerPicker by remember { mutableStateOf(false) }
+            LinkRow(
+                title = "Default player",
+                subtitle = s?.defaultPlayerPackage
+                    ?.let { "${AppGraph.media.playerLabel(it)} — Play starts it when nothing is playing" }
+                    ?: "None — Play does nothing when no player is active",
+                accent = if (s?.defaultPlayerPackage != null) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
+                onClick = { showPlayerPicker = true }
+            )
+            if (showPlayerPicker) {
+                DefaultPlayerDialog(
+                    selected = s?.defaultPlayerPackage,
+                    onPick = { pkg ->
+                        showPlayerPicker = false
+                        scope.launch { settings.setDefaultPlayer(pkg) }
+                    },
+                    onDismiss = { showPlayerPicker = false }
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             SectionTitle("Display")
@@ -504,6 +532,58 @@ private fun LinkRow(
         Text(text = "›", color = Color(0xFF757575), fontSize = 20.sp)
     }
     Spacer(Modifier.height(8.dp))
+}
+
+/** Pick the app PLAY starts when no media session exists (or none). */
+@Composable
+private fun DefaultPlayerDialog(
+    selected: String?,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val players = remember { AppGraph.media.installedPlayers() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF161616))
+                .padding(14.dp)
+        ) {
+            Text("Default player", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                item { PlayerChoice("None", selected == null) { onPick(null) } }
+                items(players) { p ->
+                    PlayerChoice(p.label, p.packageName == selected) { onPick(p.packageName) }
+                }
+                if (players.isEmpty()) {
+                    item {
+                        Text("No media apps found", color = Color(0xFF757575), fontSize = 13.sp,
+                            modifier = Modifier.padding(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Color(0xFF1B3A1F) else Color(0xFF232323))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        if (selected) Text("✓", color = Color(0xFF66BB6A), fontSize = 16.sp)
+    }
 }
 
 /** The two accessibility services, each with its own Play prominent disclosure. */

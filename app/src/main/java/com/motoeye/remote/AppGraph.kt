@@ -102,6 +102,13 @@ object AppGraph {
                 }
             }
 
+            // PLAY with no media session starts the user's default player
+            appScope.launch {
+                com.motoeye.remote.data.SettingsRepository(appContext).settings.collect {
+                    media.defaultPlayer = it.defaultPlayerPackage
+                }
+            }
+
             // Seed builtin macros (honours user deletions)
             appScope.launch {
                 runCatching {
